@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MitreAttack {
+    #[serde(default)]
     pub tactic: String,
+    #[serde(default)]
     pub technique: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subtechnique: Option<String>,

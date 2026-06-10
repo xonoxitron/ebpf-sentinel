@@ -21,6 +21,11 @@ pub trait EventSink: Send + Sync {
 }
 
 pub fn build_sinks(configs: &[SinkConfig]) -> anyhow::Result<Vec<Box<dyn EventSink>>> {
+    let configs = if configs.is_empty() {
+        std::slice::from_ref(&SinkConfig::Stdout)
+    } else {
+        configs
+    };
     let mut sinks: Vec<Box<dyn EventSink>> = Vec::new();
     for cfg in configs {
         let sink: Box<dyn EventSink> = match cfg {
@@ -52,6 +57,13 @@ impl MultiSink {
     pub async fn emit_alert(&self, alert: &Alert) -> anyhow::Result<()> {
         for sink in &self.sinks {
             sink.emit_alert(alert).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn flush(&self) -> anyhow::Result<()> {
+        for sink in &self.sinks {
+            sink.flush().await?;
         }
         Ok(())
     }

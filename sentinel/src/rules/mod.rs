@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::Context as _;
@@ -45,7 +45,7 @@ fn default_true() -> bool {
 #[serde(untagged)]
 enum RuleFile {
     Set(RuleSet),
-    Single(Rule),
+    Single(Box<Rule>),
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -103,7 +103,14 @@ impl RuleEngine {
                 .with_context(|| format!("parse rules in {}", path.display()))?;
             match parsed {
                 RuleFile::Set(set) => rules.extend(set.rules),
-                RuleFile::Single(rule) => rules.push(rule),
+                RuleFile::Single(rule) => rules.push(*rule),
+            }
+        }
+
+        let mut seen = HashSet::new();
+        for rule in &rules {
+            if !seen.insert(rule.id.clone()) {
+                anyhow::bail!("duplicate detection rule id: {}", rule.id);
             }
         }
 
@@ -112,11 +119,15 @@ impl RuleEngine {
             .map(CompiledRule::new)
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        log::info!(
-            "loaded {} detection rules from {}",
-            compiled.len(),
-            dir.display()
-        );
+        if compiled.is_empty() {
+            log::warn!("no detection rules loaded from {}", dir.display());
+        } else {
+            log::info!(
+                "loaded {} detection rules from {}",
+                compiled.len(),
+                dir.display()
+            );
+        }
         Ok(Self { rules: compiled })
     }
 
@@ -146,6 +157,10 @@ impl RuleEngine {
         alerts
     }
 
+    pub fn len(&self) -> usize {
+        self.rules.len()
+    }
+
     pub fn should_triage(&self, rule_id: &str) -> bool {
         self.rules
             .iter()
@@ -156,12 +171,12 @@ impl RuleEngine {
 
     fn matches(&self, compiled: &CompiledRule, event: &EnrichedEvent) -> bool {
         match &compiled.rule.conditions {
-            ConditionGroup::All { all } => all
-                .iter()
-                .all(|c| self.match_condition(compiled, c, event)),
-            ConditionGroup::Any { any } => any
-                .iter()
-                .any(|c| self.match_condition(compiled, c, event)),
+            ConditionGroup::All { all } => {
+                all.iter().all(|c| self.match_condition(compiled, c, event))
+            }
+            ConditionGroup::Any { any } => {
+                any.iter().any(|c| self.match_condition(compiled, c, event))
+            }
             ConditionGroup::Single(c) => self.match_condition(compiled, c, event),
         }
     }
@@ -308,6 +323,13 @@ mod tests {
 
         let miss = engine.evaluate(&sample_event("exec", "/usr/bin/ls", 1000));
         assert!(miss.is_empty());
+    }
+
+    #[test]
+    fn loads_rules_from_directory() {
+        let rules_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../rules");
+        let engine = RuleEngine::load_dir(&rules_dir).expect("load bundled rules");
+        assert!(engine.len() >= 5);
     }
 
     #[test]

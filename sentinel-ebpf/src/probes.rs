@@ -2,8 +2,8 @@ use aya_ebpf::{macros::tracepoint, programs::TracePointContext};
 use sentinel_common::{EventKind, MAX_PATH_LEN};
 
 use crate::helpers::{
-    current_pid, emit_event, path_matches_monitored, read_at, read_comm, read_user_path,
-    upsert_process,
+    current_pid, emit_event, emit_event_with_pid, path_matches_monitored, read_at, read_comm,
+    read_user_path, upsert_process,
 };
 
 #[tracepoint(category = "syscalls", name = "sys_enter_execve")]
@@ -99,8 +99,10 @@ fn try_fork(ctx: TracePointContext) -> Result<(), ()> {
     let (uid, _) = crate::helpers::read_uid_gid();
     upsert_process(child_pid, parent_pid, parent_comm, uid);
 
-    emit_event(
+    emit_event_with_pid(
         EventKind::ProcessFork,
+        child_pid,
+        parent_pid,
         parent_comm,
         [0u8; MAX_PATH_LEN],
         0,
@@ -119,7 +121,14 @@ pub fn sched_process_exec(ctx: TracePointContext) -> u32 {
 fn try_exec(ctx: TracePointContext) -> Result<(), ()> {
     let comm: [u8; 16] = read_at(&ctx, 8)?;
     let pid: u32 = read_at(&ctx, 24)?;
-    let ppid = crate::helpers::current_ppid();
+    let ppid = {
+        let from_tree = crate::helpers::lookup_ppid(pid);
+        if from_tree != 0 {
+            from_tree
+        } else {
+            crate::helpers::current_ppid()
+        }
+    };
     let (uid, _) = crate::helpers::read_uid_gid();
     upsert_process(pid, ppid, comm, uid);
     Ok(())

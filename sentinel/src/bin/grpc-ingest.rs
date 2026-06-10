@@ -14,10 +14,7 @@ struct IngestService;
 
 #[tonic::async_trait]
 impl SentinelIngest for IngestService {
-    async fn publish_event(
-        &self,
-        request: Request<Event>,
-    ) -> Result<Response<StreamAck>, Status> {
+    async fn publish_event(&self, request: Request<Event>) -> Result<Response<StreamAck>, Status> {
         let event = request.into_inner();
         println!(
             "EVENT kind={} pid={} comm={} parent_comm={}",
@@ -26,17 +23,17 @@ impl SentinelIngest for IngestService {
         Ok(Response::new(StreamAck { received: 1 }))
     }
 
-    async fn publish_alert(
-        &self,
-        request: Request<Alert>,
-    ) -> Result<Response<StreamAck>, Status> {
+    async fn publish_alert(&self, request: Request<Alert>) -> Result<Response<StreamAck>, Status> {
         let alert = request.into_inner();
         eprintln!(
             "ALERT [{}] {} severity={}",
             alert.rule_id, alert.title, alert.severity
         );
         if let Some(triage) = alert.triage {
-            eprintln!("  triage: {} (fp={:.2})", triage.summary, triage.false_positive_likelihood);
+            eprintln!(
+                "  triage: {} (fp={:.2})",
+                triage.summary, triage.false_positive_likelihood
+            );
             for step in triage.remediation {
                 eprintln!("    - {step}");
             }

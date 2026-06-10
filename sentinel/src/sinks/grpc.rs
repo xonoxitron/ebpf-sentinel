@@ -50,7 +50,7 @@ fn event_to_pb(event: &EnrichedEvent) -> PbEvent {
             .dst_addr
             .as_ref()
             .and_then(|s| s.parse::<std::net::Ipv4Addr>().ok())
-            .map(|ip| u32::from(ip))
+            .map(u32::from)
             .unwrap_or(0),
         dst_port: event.dst_port.unwrap_or(0) as u32,
         flags: event.flags,

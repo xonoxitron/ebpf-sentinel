@@ -92,6 +92,41 @@ impl Config {
     pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
         let raw = std::fs::read_to_string(path)
             .with_context(|| format!("read config {}", path.display()))?;
-        serde_yaml::from_str(&raw).context("parse config yaml")
+        let mut cfg: Self = serde_yaml::from_str(&raw).context("parse config yaml")?;
+        cfg.normalize();
+        Ok(cfg)
+    }
+
+    pub fn normalize(&mut self) {
+        if self.sinks.is_empty() {
+            self.sinks.push(SinkConfig::Stdout);
+        }
+        if self.monitored_paths.is_empty() {
+            self.monitored_paths = Self::default().monitored_paths;
+        }
+    }
+
+    pub fn validate(&self) -> anyhow::Result<()> {
+        let rules = std::path::Path::new(&self.rules_dir);
+        if !rules.is_dir() {
+            anyhow::bail!("rules_dir does not exist: {}", rules.display());
+        }
+        for sink in &self.sinks {
+            if let SinkConfig::Ndjson { path } = sink {
+                if let Some(parent) = std::path::Path::new(path).parent() {
+                    if !parent.as_os_str().is_empty() && !parent.exists() {
+                        std::fs::create_dir_all(parent).with_context(|| {
+                            format!("create ndjson parent directory {}", parent.display())
+                        })?;
+                    }
+                }
+            }
+            if let SinkConfig::Grpc { endpoint } = sink {
+                if endpoint.is_empty() {
+                    anyhow::bail!("grpc sink endpoint must not be empty");
+                }
+            }
+        }
+        Ok(())
     }
 }

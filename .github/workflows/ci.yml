@@ -8,10 +8,12 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -24,8 +26,10 @@ jobs:
       - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - uses: Swatinem/rust-cache@v2
+
       - name: Install bpf-linker
-        run: cargo install bpf-linker --locked
+        run: cargo install bpf-linker
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y clang llvm libelf-dev

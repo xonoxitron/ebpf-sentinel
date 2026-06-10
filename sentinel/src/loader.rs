@@ -21,9 +21,24 @@ impl ProbeLoader {
             log::warn!("eBPF logger init failed: {e}");
         }
 
-        Self::attach_tracepoint(&mut ebpf, "sys_enter_execve", "syscalls", "sys_enter_execve")?;
-        Self::attach_tracepoint(&mut ebpf, "sys_enter_connect", "syscalls", "sys_enter_connect")?;
-        Self::attach_tracepoint(&mut ebpf, "sys_enter_openat", "syscalls", "sys_enter_openat")?;
+        Self::attach_tracepoint(
+            &mut ebpf,
+            "sys_enter_execve",
+            "syscalls",
+            "sys_enter_execve",
+        )?;
+        Self::attach_tracepoint(
+            &mut ebpf,
+            "sys_enter_connect",
+            "syscalls",
+            "sys_enter_connect",
+        )?;
+        Self::attach_tracepoint(
+            &mut ebpf,
+            "sys_enter_openat",
+            "syscalls",
+            "sys_enter_openat",
+        )?;
         Self::attach_tracepoint(
             &mut ebpf,
             "sched_process_fork",
@@ -58,7 +73,9 @@ impl ProbeLoader {
     }
 
     pub fn ring_buf(&mut self) -> anyhow::Result<RingBuf<aya::maps::MapData>> {
-        Ok(RingBuf::try_from(self.ebpf.take_map("EVENTS").context("EVENTS map")?)?)
+        Ok(RingBuf::try_from(
+            self.ebpf.take_map("EVENTS").context("EVENTS map")?,
+        )?)
     }
 
     pub fn populate_monitored_paths(&mut self, paths: &[String]) -> anyhow::Result<()> {

@@ -46,10 +46,7 @@ impl ClaudeTriage {
     pub fn new(config: TriageConfig) -> Self {
         let api_key = std::env::var(&config.api_key_env).ok();
         if config.enabled && api_key.is_none() {
-            log::warn!(
-                "triage enabled but {} is not set",
-                config.api_key_env
-            );
+            log::warn!("triage enabled but {} is not set", config.api_key_env);
         }
         Self {
             config,
@@ -143,14 +140,15 @@ impl ClaudeTriage {
             .map(|b| b.text)
             .unwrap_or_default();
 
-        let triage: TriageResult = serde_json::from_str(extract_json(&text)).unwrap_or(TriageResult {
-            severity: alert.severity.clone(),
-            summary: text.clone(),
-            reasoning: "Claude response was not valid JSON; manual review required.".into(),
-            mitre: vec![],
-            remediation: vec!["Review alert manually.".into()],
-            false_positive_likelihood: 0.5,
-        });
+        let triage: TriageResult =
+            serde_json::from_str(extract_json(&text)).unwrap_or(TriageResult {
+                severity: alert.severity.clone(),
+                summary: text.clone(),
+                reasoning: "Claude response was not valid JSON; manual review required.".into(),
+                mitre: vec![],
+                remediation: vec!["Review alert manually.".into()],
+                false_positive_likelihood: 0.5,
+            });
 
         Ok(TriageOutcome {
             severity: triage.severity,

@@ -1,5 +1,7 @@
 use aya_ebpf::{
-    helpers::{bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_get_current_uid_gid, bpf_ktime_get_ns},
+    helpers::{
+        bpf_get_current_comm, bpf_get_current_pid_tgid, bpf_get_current_uid_gid, bpf_ktime_get_ns,
+    },
     programs::TracePointContext,
 };
 use sentinel_common::{EventKind, ProcessNode, SentinelEvent, MAX_COMM_LEN, MAX_PATH_LEN};
@@ -12,14 +14,17 @@ pub fn current_pid() -> u32 {
     (bpf_get_current_pid_tgid() >> 32) as u32
 }
 
-pub fn current_ppid() -> u32 {
-    let pid = current_pid();
+pub fn lookup_ppid(pid: u32) -> u32 {
     unsafe {
         if let Some(node) = PROCESS_TREE.get(&pid) {
             return node.ppid;
         }
     }
     0
+}
+
+pub fn current_ppid() -> u32 {
+    lookup_ppid(current_pid())
 }
 
 pub fn read_comm() -> [u8; MAX_COMM_LEN] {
@@ -61,7 +66,36 @@ pub fn path_matches_monitored(path: &[u8; MAX_PATH_LEN]) -> bool {
     false
 }
 
-pub fn emit_event(kind: EventKind, comm: [u8; MAX_COMM_LEN], path: [u8; MAX_PATH_LEN], flags: u32, dst_addr: u32, dst_port: u16) {
+pub fn emit_event(
+    kind: EventKind,
+    comm: [u8; MAX_COMM_LEN],
+    path: [u8; MAX_PATH_LEN],
+    flags: u32,
+    dst_addr: u32,
+    dst_port: u16,
+) {
+    emit_event_with_pid(
+        kind,
+        current_pid(),
+        current_ppid(),
+        comm,
+        path,
+        flags,
+        dst_addr,
+        dst_port,
+    );
+}
+
+pub fn emit_event_with_pid(
+    kind: EventKind,
+    pid: u32,
+    ppid: u32,
+    comm: [u8; MAX_COMM_LEN],
+    path: [u8; MAX_PATH_LEN],
+    flags: u32,
+    dst_addr: u32,
+    dst_port: u16,
+) {
     let Some(scratch) = SCRATCH.get_ptr_mut(0) else {
         return;
     };
@@ -69,26 +103,24 @@ pub fn emit_event(kind: EventKind, comm: [u8; MAX_COMM_LEN], path: [u8; MAX_PATH
         return;
     }
 
-    unsafe {
-        let event = &mut *scratch;
-        *event = SentinelEvent {
-            kind: kind as u32,
-            pid: current_pid(),
-            ppid: current_ppid(),
-            uid: 0,
-            gid: 0,
-            timestamp_ns: bpf_ktime_get_ns(),
-            comm,
-            dst_addr,
-            dst_port,
-            flags,
-            path,
-        };
-        let (uid, gid) = read_uid_gid();
-        event.uid = uid;
-        event.gid = gid;
-        let _ = EVENTS.output(event, 0);
-    }
+    let event = unsafe { &mut *scratch };
+    *event = SentinelEvent {
+        kind: kind as u32,
+        pid,
+        ppid,
+        uid: 0,
+        gid: 0,
+        timestamp_ns: unsafe { bpf_ktime_get_ns() },
+        comm,
+        dst_addr,
+        dst_port,
+        flags,
+        path,
+    };
+    let (uid, gid) = read_uid_gid();
+    event.uid = uid;
+    event.gid = gid;
+    let _ = EVENTS.output(event, 0);
 }
 
 pub fn upsert_process(pid: u32, ppid: u32, comm: [u8; MAX_COMM_LEN], uid: u32) {

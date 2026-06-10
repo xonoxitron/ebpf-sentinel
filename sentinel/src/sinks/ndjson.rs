@@ -18,10 +18,7 @@ impl NdjsonSink {
         if let Some(parent) = Path::new(path).parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
         Ok(Self {
             path: path.to_string(),
             file: Mutex::new(file),

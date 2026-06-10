@@ -33,11 +33,15 @@ impl Enricher {
 
         let comm = cstr_comm(&raw.comm);
         let path = cstr_path(&raw.path);
-        let parent_comm = self
-            .processes
-            .get(&raw.ppid)
-            .map(|p| p.comm.clone())
-            .unwrap_or_default();
+        let parent_comm = if kind == "processfork" {
+            // Fork events carry the parent comm in `comm`.
+            comm.clone()
+        } else {
+            self.processes
+                .get(&raw.ppid)
+                .map(|p| p.comm.clone())
+                .unwrap_or_default()
+        };
 
         let dst_addr = if raw.dst_addr != 0 {
             Some(std::net::Ipv4Addr::from(raw.dst_addr.to_be()).to_string())
@@ -83,9 +87,13 @@ impl Enricher {
                     raw.pid,
                     ProcessInfo {
                         ppid: raw.ppid,
-                        comm: cstr_comm(&raw.comm),
+                        comm: String::new(),
                     },
                 );
+                let _ = self.processes.entry(raw.ppid).or_insert(ProcessInfo {
+                    ppid: 0,
+                    comm: cstr_comm(&raw.comm),
+                });
             }
             Some(EventKind::Exec) => {
                 self.processes.insert(
