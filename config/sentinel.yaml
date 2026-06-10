@@ -1,0 +1,22 @@
+# ebpf-sentinel agent configuration
+
+host: sentinel-host-01
+
+rules_dir: rules
+
+monitored_paths:
+  - /etc/passwd
+  - /etc/shadow
+  - /etc/sudoers
+  - /etc/ssh/sshd_config
+
+sinks:
+  - type: stdout
+  - type: ndjson
+    path: /tmp/sentinel/events.ndjson
+
+triage:
+  enabled: false
+  api_key_env: ANTHROPIC_API_KEY
+  model: claude-sonnet-4-20250514
+  max_tokens: 1024

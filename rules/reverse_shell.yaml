@@ -1,0 +1,23 @@
+id: T1059.004-001
+title: Interactive Shell Spawned by Network Utility
+description: >
+  An interactive shell was spawned directly by a known network utility,
+  consistent with reverse shell establishment after initial access.
+severity: critical
+enabled: true
+tags: [execution, reverse-shell, network]
+mitre:
+  tactic: Execution
+  technique: T1059.004
+conditions:
+  all:
+    - field: kind
+      op: eq
+      value: exec
+    - field: comm
+      op: matches
+      value: "^(bash|sh|zsh|dash|fish)$"
+    - field: parent_comm
+      op: matches
+      value: "^(nc|ncat|socat|python3?|perl|ruby|php|curl)$"
+actions: [alert, triage]

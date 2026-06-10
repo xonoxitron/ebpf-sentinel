@@ -1,0 +1,5 @@
+/target/
+**/*.rs.bk
+*.profraw
+Cargo.lock
+/tmp/sentinel/

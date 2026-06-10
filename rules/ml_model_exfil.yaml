@@ -1,0 +1,23 @@
+id: CUSTOM-ML-EXFIL-001
+title: Sensitive Model Artifact Accessed by Transfer Utility
+description: >
+  A process commonly used for bulk transfer opened a path under model
+  checkpoints or weights directories on an ML training node.
+severity: high
+enabled: true
+tags: [exfiltration, ml-security, ai-infrastructure]
+mitre:
+  tactic: Exfiltration
+  technique: T1048
+conditions:
+  all:
+    - field: kind
+      op: eq
+      value: open
+    - field: path
+      op: matches
+      value: ".*/(checkpoints|weights|models)/.*"
+    - field: comm
+      op: matches
+      value: "^(curl|wget|scp|rsync|aws|gcloud)$"
+actions: [alert, triage]

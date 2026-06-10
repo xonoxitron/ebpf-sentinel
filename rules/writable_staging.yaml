@@ -1,0 +1,20 @@
+id: T1574.006-001
+title: Binary Executed from Writable Staging Directory
+description: >
+  Process execution from a world-writable staging path commonly used for
+  payload drop and defense evasion on Linux endpoints.
+severity: high
+enabled: true
+tags: [execution, defense-evasion, staging]
+mitre:
+  tactic: Defense Evasion
+  technique: T1574.006
+conditions:
+  all:
+    - field: kind
+      op: eq
+      value: exec
+    - field: path
+      op: matches
+      value: "^(/tmp/|/dev/shm/).*"
+actions: [alert, triage]

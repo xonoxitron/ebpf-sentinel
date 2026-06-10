@@ -1,0 +1,15 @@
+id: FIM-001
+title: File Integrity Violation on Monitored Path
+description: Write-capable open on a file integrity monitored path prefix.
+severity: critical
+enabled: true
+tags: [fim, impact]
+mitre:
+  tactic: Impact
+  technique: T1565.001
+conditions:
+  all:
+    - field: kind
+      op: eq
+      value: fileintegrity
+actions: [alert, triage]
