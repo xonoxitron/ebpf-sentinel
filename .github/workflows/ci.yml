@@ -80,8 +80,10 @@ jobs:
         run: |
           sudo sysctl -w kernel.perf_event_paranoid=1
           sudo mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null || true
-          BIN=$(cargo test --release -p sentinel --test integration --no-run 2>&1 \
-            | grep -o 'target/release/deps/integration-[^ )]*' | head -1)
-          test -f "$BIN"
-          echo "Running $BIN as root"
-          sudo env CI=true "$BIN" ebpf_probe_loader_attaches --ignored --exact --test-threads=1 --nocapture
+          sudo env CI=true \
+            "PATH=${PATH}" \
+            "HOME=${HOME}" \
+            "CARGO_HOME=${CARGO_HOME:-${HOME}/.cargo}" \
+            "RUSTUP_HOME=${RUSTUP_HOME:-${HOME}/.rustup}" \
+            "$(command -v cargo)" test --release -p sentinel --test integration ebpf_probe_loader_attaches -- \
+            --ignored --exact --test-threads=1 --nocapture
