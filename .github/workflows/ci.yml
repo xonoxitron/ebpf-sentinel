@@ -68,8 +68,18 @@ jobs:
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y clang llvm libelf-dev
 
+      - name: Build release (integration)
+        run: cargo build --release -p sentinel
+
       - name: Integration tests (userspace)
         run: cargo test --release -p sentinel --test integration
 
       - name: Privileged eBPF integration
-        run: sudo -E cargo test --release -p sentinel --test integration -- --ignored --test-threads=1
+        run: |
+          # sudo resets PATH on Ubuntu; preserve Rust toolchain locations for root.
+          sudo env \
+            "PATH=${PATH}" \
+            "HOME=${HOME}" \
+            "CARGO_HOME=${CARGO_HOME:-${HOME}/.cargo}" \
+            "RUSTUP_HOME=${RUSTUP_HOME:-${HOME}/.rustup}" \
+            "$(command -v cargo)" test --release -p sentinel --test integration -- --ignored --test-threads=1

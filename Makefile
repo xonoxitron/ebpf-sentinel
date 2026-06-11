@@ -13,7 +13,8 @@ test:
 
 integration:
 	cargo test --release -p sentinel --test integration
-	sudo -E cargo test --release -p sentinel --test integration -- --ignored --test-threads=1
+	sudo env "PATH=$$PATH" "HOME=$$HOME" "CARGO_HOME=$${CARGO_HOME:-$$HOME/.cargo}" "RUSTUP_HOME=$${RUSTUP_HOME:-$$HOME/.rustup}" \
+		$$(command -v cargo) test --release -p sentinel --test integration -- --ignored --test-threads=1
 
 clean:
 	cargo clean
