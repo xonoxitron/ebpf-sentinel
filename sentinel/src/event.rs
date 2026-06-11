@@ -58,8 +58,8 @@ impl EnrichedEvent {
             "ppid" => Some(self.ppid.to_string()),
             "uid" => Some(self.uid.to_string()),
             "gid" => Some(self.gid.to_string()),
-            "comm" => Some(self.comm.clone()),
-            "parent_comm" => Some(self.parent_comm.clone()),
+            "comm" | "image" => Some(self.comm.clone()),
+            "parent_comm" | "parent_image" => Some(self.parent_comm.clone()),
             "path" | "filename" => Some(self.path.clone()),
             "addr_family" => self.addr_family.map(|f| f.to_string()),
             "dst_addr" | "dst" => self.dst_addr.clone(),
@@ -70,7 +70,7 @@ impl EnrichedEvent {
             "container_id" => self.container_id.clone(),
             "pod_name" => self.pod_name.clone(),
             "namespace" | "pod_namespace" => self.pod_namespace.clone(),
-            "pod_image" | "image" => self.pod_image.clone(),
+            "pod_image" => self.pod_image.clone(),
             _ => None,
         }
     }

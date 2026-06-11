@@ -23,9 +23,9 @@ struct Opt {
     #[arg(short, long, default_value = "config/sentinel.yaml")]
     config: PathBuf,
 
-    /// Stream all telemetry events (disable for alerts-only mode)
-    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = true)]
-    emit_events: bool,
+    /// Alerts-only mode: do not stream raw telemetry events to sinks
+    #[arg(long, visible_alias = "alerts-only")]
+    no_emit_events: bool,
 
     /// Disable Claude-powered alert triage even if configured
     #[arg(long)]
@@ -74,7 +74,7 @@ async fn main() -> anyhow::Result<()> {
     let enricher = Arc::new(Mutex::new(enricher_builder));
     let suppressor = Arc::new(AlertSuppressor::new(&config.suppression));
     let metrics = Arc::new(SentinelMetrics::new()?);
-    let emit_events = opt.emit_events;
+    let emit_events = !opt.no_emit_events;
     let triage_enabled = triage.enabled() && !opt.no_triage;
 
     if config.metrics.enabled {
@@ -173,10 +173,12 @@ async fn process_event(
 
     let mut alerts = rules.evaluate(&event);
     for alert in &mut alerts {
-        if !rules.should_alert(&alert.rule_id) {
+        let wants_alert = rules.should_alert(&alert.rule_id);
+        let wants_triage = rules.should_triage(&alert.rule_id);
+        if !wants_alert && !wants_triage {
             continue;
         }
-        if !suppressor.allow(&alert.rule_id, alert.event.pid, alert.timestamp_ns) {
+        if wants_alert && !suppressor.allow(&alert.rule_id, alert.event.pid, alert.timestamp_ns) {
             metrics.inc_suppressed(&alert.rule_id);
             log::debug!(
                 "suppressed alert {} for pid {}",
@@ -185,14 +187,16 @@ async fn process_event(
             );
             continue;
         }
-        if triage_enabled && rules.should_triage(&alert.rule_id) {
+        if triage_enabled && wants_triage {
             match triage.triage(alert).await {
                 Ok(outcome) => alert.triage = Some(outcome),
                 Err(e) => log::warn!("triage failed for {}: {e:#}", alert.rule_id),
             }
         }
-        metrics.inc_alert(&alert.rule_id, &alert.severity, &alert.event.host);
-        sinks.emit_alert(alert).await?;
+        if wants_alert || alert.triage.is_some() {
+            metrics.inc_alert(&alert.rule_id, &alert.severity, &alert.event.host);
+            sinks.emit_alert(alert).await?;
+        }
     }
 
     Ok(())

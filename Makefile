@@ -1,4 +1,4 @@
-.PHONY: all build ebpf userspace test clean run fmt clippy
+.PHONY: all build ebpf userspace test clean run fmt clippy demo
 
 all: build
 
@@ -32,3 +32,6 @@ run:
 
 ingest:
 	./target/release/grpc-ingest
+
+demo:
+	./examples/demo-detection.sh

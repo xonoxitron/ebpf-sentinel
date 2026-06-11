@@ -130,7 +130,8 @@ unsafe fn try_fork(ctx: BtfTracePointContext) -> Result<(), ()> {
     read_kernel_comm(parent_comm_ptr, &mut parent_comm);
 
     let (uid, _) = crate::helpers::read_uid_gid();
-    upsert_process(child_pid as u32, parent_pid as u32, parent_comm, uid);
+    let empty_comm = [0u8; MAX_COMM_LEN];
+    upsert_process(child_pid as u32, parent_pid as u32, empty_comm, uid);
 
     emit_event_with_pid(
         EventKind::ProcessFork,

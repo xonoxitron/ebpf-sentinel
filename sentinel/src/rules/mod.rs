@@ -215,12 +215,8 @@ impl RuleEngine {
         };
 
         match cond.op {
-            Operator::Eq => value_as_str(&cond.value)
-                .map(|expected| field_val.eq_ignore_ascii_case(expected))
-                .unwrap_or(false),
-            Operator::Ne => value_as_str(&cond.value)
-                .map(|expected| !field_val.eq_ignore_ascii_case(expected))
-                .unwrap_or(true),
+            Operator::Eq => values_equal(&field_val, &cond.value),
+            Operator::Ne => !values_equal(&field_val, &cond.value),
             Operator::Contains => value_as_str(&cond.value)
                 .map(|needle| field_val.contains(needle))
                 .unwrap_or(false),
@@ -232,7 +228,7 @@ impl RuleEngine {
                 .unwrap_or(false),
             Operator::Regex => compiled
                 .regexes
-                .get(&cond.field)
+                .get(&regex_key(&cond.field, &cond.value))
                 .map(|re| re.is_match(&field_val))
                 .unwrap_or(false),
             Operator::Gt => parse_u64(&field_val)
@@ -255,7 +251,7 @@ impl CompiledRule {
                 if let Some(pattern) = value_as_str(&cond.value) {
                     let re = Regex::new(pattern)
                         .with_context(|| format!("compile regex for rule {}", rule.id))?;
-                    regexes.insert(cond.field.clone(), re);
+                    regexes.insert(regex_key(&cond.field, &cond.value), re);
                 }
             }
         }
@@ -283,6 +279,25 @@ fn value_as_u64(value: &serde_yaml::Value) -> Option<u64> {
 
 fn parse_u64(s: &str) -> Option<u64> {
     s.parse().ok()
+}
+
+fn regex_key(field: &str, value: &serde_yaml::Value) -> String {
+    format!("{}::{}", field, value_as_str(value).unwrap_or_default())
+}
+
+fn values_equal(field_val: &str, expected: &serde_yaml::Value) -> bool {
+    if let Some(s) = expected.as_str() {
+        return field_val.eq_ignore_ascii_case(s);
+    }
+    if let Some(n) = value_as_u64(expected) {
+        return parse_u64(field_val) == Some(n);
+    }
+    if let Some(b) = expected.as_bool() {
+        return field_val.parse::<bool>().ok() == Some(b)
+            || (b && field_val == "1")
+            || (!b && field_val == "0");
+    }
+    false
 }
 
 #[cfg(test)]
@@ -396,5 +411,43 @@ mod tests {
         let hit = engine.evaluate(&sample_event("exec", "/bin/bash", 1000));
         assert_eq!(hit.len(), 1);
         assert_eq!(hit[0].mitre.as_ref().unwrap().technique, "T1059.004");
+    }
+
+    #[test]
+    fn matches_numeric_eq() {
+        let engine = RuleEngine {
+            rules: vec![CompiledRule::new(Rule {
+                id: "NET-IPv6-001".into(),
+                title: "ipv6".into(),
+                description: String::new(),
+                severity: "low".into(),
+                enabled: true,
+                tags: vec![],
+                mitre: None,
+                conditions: ConditionGroup::All {
+                    all: vec![
+                        Condition {
+                            field: "kind".into(),
+                            op: Operator::Eq,
+                            value: serde_yaml::Value::String("connect".into()),
+                        },
+                        Condition {
+                            field: "addr_family".into(),
+                            op: Operator::Eq,
+                            value: serde_yaml::Value::Number(serde_yaml::Number::from(10)),
+                        },
+                    ],
+                },
+                actions: vec!["alert".into()],
+            })
+            .unwrap()],
+        };
+
+        let mut event = sample_event("connect", "", 1000);
+        event.addr_family = Some(10);
+        assert_eq!(engine.evaluate(&event).len(), 1);
+
+        event.addr_family = Some(2);
+        assert!(engine.evaluate(&event).is_empty());
     }
 }

@@ -105,6 +105,12 @@ impl ProbeLoader {
                 .context("MONITORED_PATHS map")?,
         )?;
 
+        if paths.len() > 64 {
+            log::warn!(
+                "monitored_paths has {} entries; only the first 64 are loaded into BPF",
+                paths.len()
+            );
+        }
         for (idx, path) in paths.iter().take(64).enumerate() {
             let mut key = [0u8; MAX_PATH_LEN];
             let bytes = path.as_bytes();

@@ -1,10 +1,12 @@
 use std::collections::HashMap;
-
+use std::path::Path;
 use std::sync::Arc;
 
 use crate::event::EnrichedEvent;
 use crate::k8s::K8sMetadataCache;
 use sentinel_common::{EventKind, SentinelEvent, MAX_COMM_LEN, MAX_PATH_LEN};
+
+const MAX_PROCESSES: usize = 32_768;
 
 #[derive(Clone, Default)]
 struct ProcessInfo {
@@ -21,12 +23,40 @@ pub struct Enricher {
 
 impl Enricher {
     pub fn new(host: impl Into<String>) -> Self {
-        Self {
+        let mut enricher = Self {
             host: host.into(),
             processes: HashMap::new(),
             max_lineage: 8,
             k8s: None,
+        };
+        if let Err(e) = enricher.seed_from_proc() {
+            log::warn!("could not seed process tree from /proc: {e:#}");
         }
+        enricher
+    }
+
+    /// Seed userspace lineage from running processes (mirrors BPF map seeding).
+    pub fn seed_from_proc(&mut self) -> anyhow::Result<()> {
+        let proc = Path::new("/proc");
+        for entry in std::fs::read_dir(proc)? {
+            let entry = entry?;
+            let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
+                continue;
+            };
+            let stat_path = proc.join(entry.file_name()).join("stat");
+            let comm_path = proc.join(entry.file_name()).join("comm");
+            let comm = std::fs::read_to_string(&comm_path)
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            let ppid = parse_ppid(&stat_path).unwrap_or(0);
+            self.processes.insert(pid, ProcessInfo { ppid, comm });
+        }
+        log::info!(
+            "enricher seeded {} processes from /proc",
+            self.processes.len()
+        );
+        Ok(())
     }
 
     pub fn with_k8s(mut self, cache: Arc<K8sMetadataCache>) -> Self {
@@ -41,8 +71,12 @@ impl Enricher {
             .map(|k| format!("{:?}", k).to_lowercase())
             .unwrap_or_else(|| format!("unknown({})", raw.kind));
 
-        let comm = cstr_comm(&raw.comm);
         let path = cstr_path(&raw.path);
+        let mut comm = cstr_comm(&raw.comm);
+        if kind == "exec" && !path.is_empty() {
+            // sys_enter_execve fires before the task comm is updated; use the binary path.
+            comm = path_basename(&path);
+        }
         let parent_comm = if kind == "processfork" {
             // Fork events carry the parent comm in `comm`.
             comm.clone()
@@ -120,6 +154,7 @@ impl Enricher {
     fn update_tree(&mut self, raw: &SentinelEvent) {
         match EventKind::from_u32(raw.kind) {
             Some(EventKind::ProcessFork) => {
+                let parent_comm = cstr_comm(&raw.comm);
                 self.processes.insert(
                     raw.pid,
                     ProcessInfo {
@@ -127,17 +162,32 @@ impl Enricher {
                         comm: String::new(),
                     },
                 );
-                let _ = self.processes.entry(raw.ppid).or_insert(ProcessInfo {
-                    ppid: 0,
-                    comm: cstr_comm(&raw.comm),
-                });
+                if let Some(parent) = self.processes.get_mut(&raw.ppid) {
+                    if parent.comm.is_empty() {
+                        parent.comm = parent_comm.clone();
+                    }
+                } else {
+                    self.processes.insert(
+                        raw.ppid,
+                        ProcessInfo {
+                            ppid: 0,
+                            comm: parent_comm,
+                        },
+                    );
+                }
             }
             Some(EventKind::Exec) => {
+                let path = cstr_path(&raw.path);
+                let comm = if path.is_empty() {
+                    cstr_comm(&raw.comm)
+                } else {
+                    path_basename(&path)
+                };
                 self.processes.insert(
                     raw.pid,
                     ProcessInfo {
                         ppid: raw.ppid,
-                        comm: cstr_comm(&raw.comm),
+                        comm,
                     },
                 );
             }
@@ -152,6 +202,10 @@ impl Enricher {
                     );
                 }
             }
+        }
+        if self.processes.len() > MAX_PROCESSES {
+            self.processes.clear();
+            log::warn!("process cache exceeded {MAX_PROCESSES} entries; cleared");
         }
     }
 
@@ -179,6 +233,21 @@ fn cstr_comm(buf: &[u8; MAX_COMM_LEN]) -> String {
 fn cstr_path(buf: &[u8; MAX_PATH_LEN]) -> String {
     let end = buf.iter().position(|&b| b == 0).unwrap_or(MAX_PATH_LEN);
     String::from_utf8_lossy(&buf[..end]).into_owned()
+}
+
+fn path_basename(path: &str) -> String {
+    Path::new(path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path)
+        .to_string()
+}
+
+fn parse_ppid(stat_path: &Path) -> Option<u32> {
+    let stat = std::fs::read_to_string(stat_path).ok()?;
+    let rparen = stat.rfind(')')?;
+    let rest = stat[rparen + 2..].split_whitespace().collect::<Vec<_>>();
+    rest.get(1)?.parse().ok()
 }
 
 #[cfg(test)]
@@ -211,5 +280,43 @@ mod tests {
         assert_eq!(event.addr_family, Some(AF_INET6));
         assert_eq!(event.dst_addr.as_deref(), Some("::1"));
         assert_eq!(event.dst_port, Some(443));
+    }
+
+    #[test]
+    fn exec_comm_derived_from_path() {
+        let mut enricher = Enricher::new("test-host");
+        enricher.processes.insert(
+            4241,
+            ProcessInfo {
+                ppid: 1,
+                comm: "nc".into(),
+            },
+        );
+
+        let mut path = [0u8; MAX_PATH_LEN];
+        let binary = b"/bin/bash";
+        path[..binary.len()].copy_from_slice(binary);
+        let mut comm = [0u8; MAX_COMM_LEN];
+        comm[..2].copy_from_slice(b"nc");
+
+        let raw = SentinelEvent {
+            kind: EventKind::Exec as u32,
+            pid: 4242,
+            ppid: 4241,
+            uid: 1000,
+            gid: 1000,
+            timestamp_ns: 1,
+            comm,
+            addr_family: 0,
+            _pad: [0],
+            dst_port: 0,
+            dst_addr: 0,
+            dst_addr_v6: [0; 16],
+            flags: 0,
+            path,
+        };
+        let event = enricher.enrich(raw);
+        assert_eq!(event.comm, "bash");
+        assert_eq!(event.parent_comm, "nc");
     }
 }

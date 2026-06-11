@@ -27,37 +27,70 @@ If you are evaluating candidates for **Linux kernel security**, **EDR**, **detec
 
 ## Architecture
 
+```mermaid
+flowchart TB
+    subgraph kernel["Linux kernel · sentinel-ebpf"]
+        direction TB
+        TP["Tracepoints<br/>execve · connect · openat<br/>fork · exec"]
+        MAPS["BPF maps<br/>PROCESS_TREE · MONITORED_PATHS<br/>PerCpuArray scratch"]
+        RB[("EVENTS RingBuf<br/>256 KiB · mmap")]
+        TP --> MAPS
+        TP --> RB
+    end
+
+    subgraph types["sentinel-common"]
+        EVT["SentinelEvent<br/>fixed-size C layout"]
+    end
+
+    subgraph daemon["sentinel daemon · Rust + Tokio"]
+        direction TB
+        LOAD["ProbeLoader<br/>BTF / CO-RE attach · map seeding"]
+        CONS["RingBuf consumer<br/>parse · mpsc channel"]
+        ENR["Enricher<br/>parent_comm · lineage<br/>K8s CRI metadata"]
+        RULES["RuleEngine<br/>YAML rules + Sigma import"]
+        SUP["AlertSuppressor<br/>per-rule rate limits"]
+        TRI["Claude Triager<br/>optional SOAR"]
+        MET["Prometheus :9090<br/>events · alerts · suppressed"]
+        SINK["MultiSink<br/>stdout · NDJSON · gRPC"]
+
+        LOAD --> CONS
+        CONS --> ENR
+        ENR -->|"all events"| SINK
+        ENR --> RULES
+        RULES --> SUP
+        SUP -->|"MITRE alerts"| TRI
+        TRI --> SINK
+        SUP -->|"non-suppressed"| SINK
+        ENR --> MET
+        RULES --> MET
+        SUP --> MET
+    end
+
+    subgraph config["Configuration & rules"]
+        CFG["config/sentinel.yaml"]
+        RULES_DIR["rules/ · sigma/"]
+        CFG --> LOAD
+        CFG --> ENR
+        CFG --> SINK
+        CFG --> MET
+        RULES_DIR --> RULES
+    end
+
+    subgraph external["Downstream"]
+        ANTH["Anthropic API"]
+        PLATFORM["SIEM / platform<br/>grpc-ingest · log aggregation"]
+        TRI -.-> ANTH
+        SINK --> PLATFORM
+    end
+
+    RB -->|"zero-copy events"| CONS
+    EVT -.-> kernel
+    EVT -.-> daemon
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                            Linux Kernel                                  │
-│                                                                          │
-│  syscalls/sys_enter_execve ──┐                                           │
-│  syscalls/sys_enter_connect ─┼──► RingBuf (256 KiB, lock-free mmap)      │
-│  syscalls/sys_enter_openat ──┤         │                                 │
-│  sched/sched_process_fork  ──┤         │  PerCpuArray scratch (stack-safe)│
-│  sched/sched_process_exec  ──┘         │                                 │
-│  PROCESS_TREE · MONITORED_PATHS maps   │                                 │
-└────────────────────────────────────────┼─────────────────────────────────┘
-                                         │ zero-copy SentinelEvent
-                                         ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     sentinel daemon (Rust + Tokio)                       │
-│                                                                          │
-│  RingBuf consumer ──► Enricher (parent_comm, lineage) ──► RuleEngine     │
-│                              │                              │            │
-│                              ▼                              ▼            │
-│                     Telemetry sinks                   Alert + MITRE       │
-│                     (stdout / NDJSON / gRPC)              │              │
-│                                                           ▼              │
-│                                              ┌────────────────────────┐  │
-│                                              │   Claude Triager       │  │
-│                                              │  (ML-workload aware)   │  │
-│                                              │  severity · reasoning  │  │
-│                                              │  MITRE · remediation   │  │
-│                                              │  false-positive score  │  │
-│                                              └────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+
+**Telemetry path** — every kernel event is parsed, enriched, optionally emitted to sinks, and counted in Prometheus.
+
+**Detection path** — enriched events are evaluated against YAML/Sigma rules; matches pass through suppression and optional Claude triage before alert export.
 
 ### Design principles for ML workloads
 
@@ -91,6 +124,8 @@ If you are evaluating candidates for **Linux kernel security**, **EDR**, **detec
 
 ## Quick start
 
+> **Run commands from the repository root** so relative paths like `rules_dir: rules` resolve correctly.
+
 ### Prerequisites
 
 ```bash
@@ -99,9 +134,11 @@ rustup toolchain install nightly
 rustup component add --toolchain nightly rust-src
 cargo install bpf-linker
 
-# System
-# Linux ≥ 5.8 with BTF: /sys/kernel/btf/vmlinux
-# clang / llvm, libelf
+# System (Debian/Ubuntu)
+sudo apt-get install -y clang llvm libelf-dev
+
+# Kernel: Linux ≥ 5.8 with BTF
+test -f /sys/kernel/btf/vmlinux && echo "BTF OK" || echo "install kernel BTF package"
 ```
 
 ### Build
@@ -110,10 +147,19 @@ cargo install bpf-linker
 git clone https://github.com/xonoxitron/ebpf-sentinel.git
 cd ebpf-sentinel
 make build
-# or: cargo build --release -p sentinel --bin sentinel --bin grpc-ingest
+# binaries: target/release/sentinel, target/release/grpc-ingest
 ```
 
-### Run (requires elevated privileges)
+### Try detection without root (30 seconds)
+
+```bash
+make demo
+# or: ./examples/demo-detection.sh
+```
+
+Runs rule-engine unit tests and a synthetic reverse-shell pipeline test — no `sudo` required.
+
+### Run the live sensor
 
 ```bash
 # CAP_BPF + CAP_PERFMON + CAP_SYS_ADMIN, or root
@@ -122,7 +168,24 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # optional, for Claude triage
 sudo -E ./target/release/sentinel --config config/sentinel.yaml
 ```
 
-Enable triage in `config/sentinel.yaml`:
+**Safe trigger** (second terminal) — bundled writable-staging rule:
+
+```bash
+cp /bin/ls /tmp/sentinel-demo && /tmp/sentinel-demo --version
+rm -f /tmp/sentinel-demo
+```
+
+Expect alert `T1574.006-001` on **stderr**. Full walkthrough: [`examples/README.md`](examples/README.md).
+
+### Alerts-only mode
+
+```bash
+sudo -E ./target/release/sentinel --config config/sentinel.yaml --no-emit-events
+```
+
+### Claude triage
+
+Enable in `config/sentinel.yaml`:
 
 ```yaml
 triage:
@@ -132,18 +195,33 @@ triage:
   max_tokens: 1024
 ```
 
-### Optional: gRPC ingest server (SOAR / platform sink)
+Rules with `actions: [alert, triage]` receive structured triage JSON on export.
+
+### gRPC ingest pipeline
 
 ```bash
+# Terminal A — reference ingest server (0.0.0.0:50051)
 ./target/release/grpc-ingest
-# listens on 0.0.0.0:50051 by default (override with SENTINEL_GRPC_ADDR)
+
+# Terminal B — agent with gRPC sink
+sudo -E ./target/release/sentinel --config config/sentinel-grpc.yaml
 ```
+
+See [`config/sentinel-grpc.yaml`](config/sentinel-grpc.yaml) and [`examples/docker-compose.yml`](examples/docker-compose.yml).
 
 ---
 
 ## Example output
 
-**Rule match (NDJSON / stdout):**
+### Sink formats
+
+| Sink | Events | Alerts |
+|------|--------|--------|
+| **stdout** | JSON on stdout | JSON on **stderr** |
+| **ndjson** | `{"record_type":"event","data":{...}}` | `{"record_type":"alert","data":{...}}` |
+| **grpc** | `SentinelIngest.StreamEvents` | `SentinelIngest.StreamAlerts` |
+
+### Alert payload (core fields)
 
 ```json
 {
@@ -166,14 +244,22 @@ triage:
 }
 ```
 
-**Claude triage enrichment:**
+> **Note:** At `sys_enter_execve`, kernel `comm` is still the *pre-exec* task name. The enricher derives `comm` from the executable `path` basename so rules match the real binary.
+
+### NDJSON envelope
+
+```json
+{"record_type":"alert","data":{"rule_id":"T1574.006-001","title":"...","event":{...}}}
+```
+
+### Claude triage enrichment (`triage` field on alert)
 
 ```json
 {
   "triage": {
     "severity": "critical",
     "summary": "Reverse shell pattern: bash spawned directly by netcat.",
-    "reasoning": "Interactive shell with network utility parent is a high-fidelity execution chain. Unlikely to be legitimate ML training orchestration.",
+    "reasoning": "Interactive shell with network utility parent is a high-fidelity execution chain.",
     "mitre": ["T1059.004", "T1071.001"],
     "remediation": [
       "Isolate the node from the network.",
@@ -221,11 +307,12 @@ actions: [alert, triage]
 
 | Kind | Key fields |
 |------|------------|
-| `exec` | `comm`, `parent_comm`, `path`, `lineage`, `uid` |
-| `connect` | `comm`, `dst_addr`, `dst_port` |
+| `exec` | `comm` (from path basename), `parent_comm`, `path`, `lineage`, `uid` |
+| `connect` | `comm`, `addr_family`, `dst_addr`, `dst_port` (IPv4 and IPv6) |
 | `open` | `comm`, `path`, `flags` |
 | `fileintegrity` | `comm`, `path`, `flags` |
-| `processfork` | `comm`, `pid`, `ppid`, `uid` |
+| `processfork` | `comm` (parent), `pid`, `ppid`, `uid` |
+| *(enriched)* | `container_id`, `pod_name`, `pod_namespace`, `pod_image` when K8s enabled |
 
 ### Bundled detections
 
@@ -236,6 +323,8 @@ actions: [alert, triage]
 | `CUSTOM-ML-EXFIL-001` | Model artifact accessed by transfer utility | High |
 | `T1003.008-001` | Access to credential store (`/etc/shadow`) | High |
 | `FIM-001` | File integrity violation on monitored path | Critical |
+| `NET-IPv6-001` | Outbound IPv6 connect | Low |
+| `sigma-sentinel-sigma-nc-shell` | Sigma: shell spawned by netcat | Critical |
 
 ---
 
@@ -243,20 +332,31 @@ actions: [alert, triage]
 
 ```
 ebpf-sentinel/
-├── .github/workflows/ci.yml     # Build + test pipeline
-├── config/sentinel.yaml         # Agent configuration
-├── rules/                       # Detection-as-code (MITRE-mapped)
+├── .github/workflows/ci.yml     # Build + test + integration CI
+├── config/
+│   ├── sentinel.yaml            # Default agent config
+│   └── sentinel-grpc.yaml       # gRPC sink example
+├── examples/
+│   ├── demo-detection.sh        # Hands-on demo (no root)
+│   ├── docker-compose.yml       # grpc-ingest reference stack
+│   └── README.md                # Step-by-step tutorials
+├── rules/                       # Native YAML detections (MITRE-mapped)
+├── sigma/                       # Sigma rules (imported at startup)
+├── docs/                        # PORTABILITY.md, K8S.md
 ├── sentinel-common/             # Shared #[repr(C)] event types
 ├── sentinel-ebpf/               # Kernel probes (Aya, bpfel-unknown-none)
 │   └── src/
-│       ├── probes.rs            # execve · connect · openat · fork
-│       └── helpers.rs           # emit · lineage · FIM matching
+│       ├── probes.rs            # execve · connect · openat · fork/exec
+│       └── helpers.rs           # emit · FIM · process tree
 └── sentinel/                    # Userspace daemon
     ├── proto/sentinel.proto     # gRPC telemetry schema
+    ├── tests/integration.rs     # Pipeline + eBPF loader tests
     └── src/
-        ├── loader.rs            # eBPF load · attach · map seeding
-        ├── enricher.rs          # parent_comm · process lineage
-        ├── rules/               # YAML engine · regex compile
+        ├── loader.rs            # BTF attach · map seeding
+        ├── enricher.rs          # /proc seed · lineage · K8s
+        ├── rules/               # YAML + Sigma engine
+        ├── suppress.rs          # Per-rule rate limits
+        ├── metrics.rs           # Prometheus exporter
         ├── triage.rs            # Claude SOAR integration
         └── sinks/               # stdout · NDJSON · gRPC
 ```
@@ -293,7 +393,18 @@ ebpf-sentinel/
 
 ### Sigma import
 
-Sigma YAML rules under `sigma_dir` are translated into native rules. Supported mappings include `Image` → `comm`, `ParentImage` → `parent_comm`, `CommandLine` → `path`, and `logsource.category` → `kind`.
+Sigma YAML rules under `sigma_dir` are translated into native rules at startup (`sigma-{id}` prefix).
+
+| Sigma field | Sentinel field | Notes |
+|-------------|----------------|-------|
+| `Image` | `comm` | Path suffixes normalized (`/bin/bash` → `bash`) |
+| `ParentImage` | `parent_comm` | Same normalization |
+| `CommandLine` | `path` | |
+| `DestinationIp` | `dst_addr` | |
+| `DestinationPort` | `dst_port` | |
+| `logsource.category` | `kind` | `process_creation` → `exec`, etc. |
+
+Unsupported Sigma fields are skipped with a warning.
 
 ### Prometheus
 
@@ -320,12 +431,23 @@ curl -s localhost:9090/metrics | grep sentinel_
 ## Development
 
 ```bash
-make test      # unit tests
-make integration  # integration + sudo eBPF tests
-make fmt       # rustfmt
-make clippy    # lint (strict)
-make ingest    # run gRPC reference server
+make demo        # hands-on detection demo (recommended first step)
+make test        # unit tests
+make integration # integration + sudo eBPF loader test
+make fmt         # rustfmt
+make clippy      # lint (strict)
+make ingest      # run gRPC reference server
 ```
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---------|-----|
+| `kernel BTF not found` | Install `linux-image-$(uname -r)` debug/BTF package; see [`docs/PORTABILITY.md`](docs/PORTABILITY.md) |
+| `Operation not permitted` loading BPF | Run as root or grant `CAP_BPF`, `CAP_PERFMON`, `CAP_SYS_ADMIN` |
+| No rules match | Run from repo root; check `rules_dir` path in config |
+| No alerts on stderr | Alerts go to **stderr**; events go to **stdout** when using the stdout sink |
+| gRPC connection refused | Start `grpc-ingest` before the agent; verify `endpoint` in config |
 
 ---
 

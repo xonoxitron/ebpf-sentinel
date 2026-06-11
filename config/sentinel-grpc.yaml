@@ -1,0 +1,29 @@
+# Example: stream telemetry and alerts to the reference grpc-ingest server.
+host: sentinel-grpc-demo
+
+rules_dir: rules
+sigma_dir: sigma
+
+monitored_paths:
+  - /etc/passwd
+  - /etc/shadow
+
+sinks:
+  - type: stdout
+  - type: grpc
+    endpoint: http://127.0.0.1:50051
+
+triage:
+  enabled: false
+
+metrics:
+  enabled: true
+  listen: "127.0.0.1:9090"
+
+k8s:
+  enabled: false
+
+suppression:
+  default:
+    max_alerts: 10
+    window_secs: 60

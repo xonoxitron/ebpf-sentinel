@@ -197,7 +197,7 @@ fn map_sigma_field(field: &str, value: &Value) -> Option<Condition> {
     };
 
     let mapped_field = name?;
-    let yaml_value = normalize_sigma_value(value);
+    let yaml_value = normalize_sigma_value(value, mapped_field.as_str(), &op);
     Some(Condition {
         field: mapped_field,
         op,
@@ -220,10 +220,35 @@ fn map_field_name(sigma_field: &str) -> Option<String> {
     )
 }
 
-fn normalize_sigma_value(value: &Value) -> Value {
+fn normalize_sigma_value(value: &Value, field: &str, op: &Operator) -> Value {
     match value {
-        Value::String(s) => Value::String(s.trim_matches('\'').trim_matches('"').into()),
+        Value::String(s) => {
+            let trimmed = s.trim_matches('\'').trim_matches('"');
+            let normalized = if field == "comm" || field == "parent_comm" {
+                sigma_image_to_comm(trimmed, op)
+            } else {
+                trimmed.to_string()
+            };
+            Value::String(normalized)
+        }
         other => other.clone(),
+    }
+}
+
+/// Map Windows-style Sigma image paths to Linux task `comm` names.
+fn sigma_image_to_comm(value: &str, op: &Operator) -> String {
+    match op {
+        &Operator::Suffix | &Operator::Prefix | &Operator::Contains => value
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(value)
+            .to_string(),
+        &Operator::Regex => value.to_string(),
+        _ => value
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(value)
+            .to_string(),
     }
 }
 
@@ -291,5 +316,16 @@ tags:
         assert_eq!(rule.id, "sigma-test-sigma-001");
         assert_eq!(rule.severity, "high");
         assert!(rule.mitre.is_some());
+        let conditions = match rule.conditions {
+            super::ConditionGroup::All { ref all } => all,
+            _ => panic!("expected all group"),
+        };
+        let parent = conditions
+            .iter()
+            .find(|c| c.field == "parent_comm")
+            .expect("parent_comm");
+        assert_eq!(parent.value.as_str(), Some("nc"));
+        let image = conditions.iter().find(|c| c.field == "comm").expect("comm");
+        assert_eq!(image.value.as_str(), Some("bash"));
     }
 }

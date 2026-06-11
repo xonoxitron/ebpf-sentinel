@@ -34,8 +34,30 @@ fn end_to_end_rule_match_without_ebpf() {
     let engine = RuleEngine::load_from_config(&config).expect("load rules");
     let mut enricher = Enricher::new("integration-test");
 
+    let mut parent_comm = [0u8; MAX_COMM_LEN];
+    parent_comm[..2].copy_from_slice(b"nc");
+    enricher.enrich(SentinelEvent {
+        kind: EventKind::ProcessFork as u32,
+        pid: 4242,
+        ppid: 4241,
+        uid: 1000,
+        gid: 1000,
+        timestamp_ns: 0,
+        comm: parent_comm,
+        addr_family: 0,
+        _pad: [0],
+        dst_port: 0,
+        dst_addr: 0,
+        dst_addr_v6: [0; 16],
+        flags: 0,
+        path: [0u8; MAX_PATH_LEN],
+    });
+
+    // Parent nc (4241) recorded via fork; exec carries stale comm but correct path.
     let mut comm = [0u8; MAX_COMM_LEN];
-    comm[..4].copy_from_slice(b"bash");
+    comm[..2].copy_from_slice(b"nc");
+    let mut path = [0u8; MAX_PATH_LEN];
+    path[..9].copy_from_slice(b"/bin/bash");
     let raw = SentinelEvent {
         kind: EventKind::Exec as u32,
         pid: 4242,
@@ -50,10 +72,9 @@ fn end_to_end_rule_match_without_ebpf() {
         dst_addr: 0,
         dst_addr_v6: [0; 16],
         flags: 0,
-        path: [0u8; MAX_PATH_LEN],
+        path,
     };
-    let mut event = enricher.enrich(raw);
-    event.parent_comm = "nc".into();
+    let event = enricher.enrich(raw);
 
     let alerts = engine.evaluate(&event);
     assert!(
@@ -61,6 +82,40 @@ fn end_to_end_rule_match_without_ebpf() {
             .iter()
             .any(|a| a.rule_id.contains("T1059") || a.rule_id.contains("sigma")),
         "expected reverse-shell style alert, got: {:?}",
+        alerts.iter().map(|a| &a.rule_id).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn bundled_ipv6_rule_matches_numeric_family() {
+    let root = workspace_root();
+    let config = Config {
+        rules_dir: root.join("rules").to_string_lossy().into_owned(),
+        ..Config::default()
+    };
+    let engine = RuleEngine::load_from_config(&config).expect("load rules");
+    let mut enricher = Enricher::new("integration-test");
+    let raw = SentinelEvent {
+        kind: EventKind::Connect as u32,
+        pid: 1,
+        ppid: 0,
+        uid: 0,
+        gid: 0,
+        timestamp_ns: 1,
+        comm: [0u8; MAX_COMM_LEN],
+        addr_family: sentinel_common::AF_INET6,
+        _pad: [0],
+        dst_port: 443,
+        dst_addr: 0,
+        dst_addr_v6: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        flags: 0,
+        path: [0u8; MAX_PATH_LEN],
+    };
+    let event = enricher.enrich(raw);
+    let alerts = engine.evaluate(&event);
+    assert!(
+        alerts.iter().any(|a| a.rule_id == "NET-IPv6-001"),
+        "expected NET-IPv6-001, got {:?}",
         alerts.iter().map(|a| &a.rule_id).collect::<Vec<_>>()
     );
 }

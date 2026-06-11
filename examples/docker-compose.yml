@@ -1,0 +1,16 @@
+# Reference layout for a two-process telemetry pipeline.
+# Build binaries on the host first: make build
+#
+#   docker compose -f examples/docker-compose.yml up
+#
+# Sentinel requires host PID namespace, BTF, and elevated caps — run on the host
+# for real eBPF attach; this compose file runs grpc-ingest only.
+
+services:
+  grpc-ingest:
+    image: debian:bookworm-slim
+    network_mode: host
+    volumes:
+      - ../target/release/grpc-ingest:/usr/local/bin/grpc-ingest:ro
+    command: ["/usr/local/bin/grpc-ingest"]
+    restart: unless-stopped
