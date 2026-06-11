@@ -3,6 +3,7 @@
 
 mod helpers;
 mod probes;
+mod tracepoint_offsets;
 
 use aya_ebpf::{
     bindings::BPF_F_NO_PREALLOC,

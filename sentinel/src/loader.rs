@@ -2,9 +2,11 @@ use std::path::Path;
 
 use anyhow::Context as _;
 use aya::maps::{Array, HashMap, RingBuf};
-use aya::programs::TracePoint;
-use aya::Ebpf;
+use aya::programs::{BtfTracePoint, TracePoint};
+use aya::{Btf, Ebpf};
 use sentinel_common::{ProcessNode, MAX_PATH_LEN};
+
+const BTF_VMLINUX: &str = "/sys/kernel/btf/vmlinux";
 
 pub struct ProbeLoader {
     ebpf: Ebpf,
@@ -12,6 +14,9 @@ pub struct ProbeLoader {
 
 impl ProbeLoader {
     pub fn load() -> anyhow::Result<Self> {
+        ensure_btf_available()?;
+        log_kernel_info();
+
         let mut ebpf = Ebpf::load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
             "/sentinel"
@@ -21,6 +26,8 @@ impl ProbeLoader {
             log::warn!("eBPF logger init failed: {e}");
         }
 
+        let btf = Btf::from_sys_fs().context("load BTF from /sys/kernel/btf/vmlinux")?;
+
         Self::attach_tracepoint(
             &mut ebpf,
             "sys_enter_execve",
@@ -39,12 +46,7 @@ impl ProbeLoader {
             "syscalls",
             "sys_enter_openat",
         )?;
-        Self::attach_tracepoint(
-            &mut ebpf,
-            "sched_process_fork",
-            "sched",
-            "sched_process_fork",
-        )?;
+        Self::attach_btf_tracepoint(&mut ebpf, "sched_process_fork", "sched_process_fork", &btf)?;
         Self::attach_tracepoint(
             &mut ebpf,
             "sched_process_exec",
@@ -69,6 +71,24 @@ impl ProbeLoader {
         prog.attach(category, name)
             .with_context(|| format!("attach {category}/{name}"))?;
         log::info!("attached tracepoint {category}/{name}");
+        Ok(())
+    }
+
+    fn attach_btf_tracepoint(
+        ebpf: &mut Ebpf,
+        program: &str,
+        tracepoint: &str,
+        btf: &Btf,
+    ) -> anyhow::Result<()> {
+        let prog: &mut BtfTracePoint = ebpf
+            .program_mut(program)
+            .with_context(|| format!("program {program} not found"))?
+            .try_into()?;
+        prog.load(tracepoint, btf)
+            .with_context(|| format!("load BTF tracepoint {tracepoint}"))?;
+        prog.attach()
+            .with_context(|| format!("attach BTF tracepoint {tracepoint}"))?;
+        log::info!("attached BTF tracepoint {tracepoint}");
         Ok(())
     }
 
@@ -141,6 +161,26 @@ impl ProbeLoader {
     }
 }
 
+/// Require kernel BTF before loading eBPF programs.
+pub fn ensure_btf_available() -> anyhow::Result<()> {
+    if !Path::new(BTF_VMLINUX).exists() {
+        anyhow::bail!(
+            "kernel BTF not found at {BTF_VMLINUX}. \
+             Enable CONFIG_DEBUG_INFO_BTF (Linux ≥ 5.8) or install the kernel BTF package. \
+             See docs/PORTABILITY.md."
+        );
+    }
+    Ok(())
+}
+
+fn log_kernel_info() {
+    let release = std::fs::read_to_string("/proc/sys/kernel/osrelease")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "unknown".into());
+    let arch = std::env::consts::ARCH;
+    log::info!("kernel {release} ({arch}), BTF available at {BTF_VMLINUX}");
+}
+
 fn parse_ppid(stat_path: &Path) -> Option<u32> {
     let stat = std::fs::read_to_string(stat_path).ok()?;
     // pid (comm) state ppid ...
@@ -167,5 +207,15 @@ pub fn raise_memlock_limit() {
     let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) };
     if ret != 0 {
         log::debug!("could not raise memlock rlimit: {ret}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn btf_path_constant() {
+        assert!(BTF_VMLINUX.contains("vmlinux"));
     }
 }

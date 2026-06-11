@@ -1,10 +1,20 @@
-use aya_ebpf::{macros::tracepoint, programs::TracePointContext};
-use sentinel_common::{EventKind, MAX_PATH_LEN};
+use aya_ebpf::{
+    helpers::bpf_probe_read_user,
+    macros::{btf_tracepoint, tracepoint},
+    programs::{BtfTracePointContext, TracePointContext},
+};
+use sentinel_common::{EventKind, MAX_COMM_LEN, MAX_PATH_LEN};
 
 use crate::helpers::{
     current_pid, emit_event, emit_event_with_pid, path_matches_monitored, read_at, read_comm,
-    read_user_path, upsert_process,
+    read_kernel_comm, read_user_path, upsert_process,
 };
+use crate::tracepoint_offsets::{
+    SCHED_PROCESS_EXEC_COMM, SCHED_PROCESS_EXEC_PID, SYS_ENTER_CONNECT_ADDR,
+    SYS_ENTER_EXECVE_FILENAME, SYS_ENTER_OPENAT_FILENAME, SYS_ENTER_OPENAT_FLAGS,
+};
+
+const AF_INET: u16 = 2;
 
 #[tracepoint(category = "syscalls", name = "sys_enter_execve")]
 pub fn sys_enter_execve(ctx: TracePointContext) -> u32 {
@@ -18,7 +28,7 @@ fn try_execve(ctx: TracePointContext) -> Result<(), ()> {
     let ppid = crate::helpers::current_ppid();
     let (uid, _) = crate::helpers::read_uid_gid();
 
-    let filename_ptr: *const u8 = read_at(&ctx, 16)?;
+    let filename_ptr: *const u8 = read_at(&ctx, SYS_ENTER_EXECVE_FILENAME)?;
     let mut path = [0u8; MAX_PATH_LEN];
     read_user_path(filename_ptr, &mut path);
 
@@ -35,17 +45,20 @@ pub fn sys_enter_connect(ctx: TracePointContext) -> u32 {
 
 fn try_connect(ctx: TracePointContext) -> Result<(), ()> {
     let comm = read_comm();
-    let addr_ptr: *const u8 = read_at(&ctx, 24)?;
+    let addr_ptr: *const u8 = read_at(&ctx, SYS_ENTER_CONNECT_ADDR)?;
     if addr_ptr.is_null() {
         return Ok(());
     }
 
-    let sa_family = unsafe { core::ptr::read_unaligned(addr_ptr as *const u16) };
+    let sa_buf: [u8; 8] =
+        unsafe { bpf_probe_read_user(addr_ptr as *const [u8; 8]) }.unwrap_or([0; 8]);
+    let sa_family = u16::from_ne_bytes([sa_buf[0], sa_buf[1]]);
+
     let mut dst_port = 0u16;
     let mut dst_addr = 0u32;
-    if sa_family == 2 {
-        let port = unsafe { core::ptr::read_unaligned(addr_ptr.add(2) as *const u16) };
-        dst_addr = unsafe { core::ptr::read_unaligned(addr_ptr.add(4) as *const u32) };
+    if sa_family == AF_INET {
+        let port = u16::from_ne_bytes([sa_buf[2], sa_buf[3]]);
+        dst_addr = u32::from_ne_bytes([sa_buf[4], sa_buf[5], sa_buf[6], sa_buf[7]]);
         dst_port = u16::from_be(port);
     }
 
@@ -68,8 +81,8 @@ pub fn sys_enter_openat(ctx: TracePointContext) -> u32 {
 
 fn try_openat(ctx: TracePointContext) -> Result<(), ()> {
     let comm = read_comm();
-    let filename_ptr: *const u8 = read_at(&ctx, 24)?;
-    let flags: i32 = read_at(&ctx, 32)?;
+    let filename_ptr: *const u8 = read_at(&ctx, SYS_ENTER_OPENAT_FILENAME)?;
+    let flags: i32 = read_at(&ctx, SYS_ENTER_OPENAT_FLAGS)?;
     let mut path = [0u8; MAX_PATH_LEN];
     read_user_path(filename_ptr, &mut path);
 
@@ -85,24 +98,27 @@ fn try_openat(ctx: TracePointContext) -> Result<(), ()> {
     Ok(())
 }
 
-#[tracepoint(category = "sched", name = "sched_process_fork")]
-pub fn sched_process_fork(ctx: TracePointContext) -> u32 {
-    let _ = try_fork(ctx);
+#[btf_tracepoint(function = "sched_process_fork")]
+pub fn sched_process_fork(ctx: BtfTracePointContext) -> u32 {
+    let _ = unsafe { try_fork(ctx) };
     0
 }
 
-fn try_fork(ctx: TracePointContext) -> Result<(), ()> {
-    let parent_comm: [u8; 16] = read_at(&ctx, 8)?;
-    let parent_pid: u32 = read_at(&ctx, 24)?;
-    let child_pid: u32 = read_at(&ctx, 28)?;
+unsafe fn try_fork(ctx: BtfTracePointContext) -> Result<(), ()> {
+    let parent_comm_ptr = ctx.arg::<*const u8>(0);
+    let parent_pid: i32 = ctx.arg(1);
+    let child_pid: i32 = ctx.arg(3);
+
+    let mut parent_comm = [0u8; MAX_COMM_LEN];
+    read_kernel_comm(parent_comm_ptr, &mut parent_comm);
 
     let (uid, _) = crate::helpers::read_uid_gid();
-    upsert_process(child_pid, parent_pid, parent_comm, uid);
+    upsert_process(child_pid as u32, parent_pid as u32, parent_comm, uid);
 
     emit_event_with_pid(
         EventKind::ProcessFork,
-        child_pid,
-        parent_pid,
+        child_pid as u32,
+        parent_pid as u32,
         parent_comm,
         [0u8; MAX_PATH_LEN],
         0,
@@ -119,8 +135,8 @@ pub fn sched_process_exec(ctx: TracePointContext) -> u32 {
 }
 
 fn try_exec(ctx: TracePointContext) -> Result<(), ()> {
-    let comm: [u8; 16] = read_at(&ctx, 8)?;
-    let pid: u32 = read_at(&ctx, 24)?;
+    let comm: [u8; 16] = read_at(&ctx, SCHED_PROCESS_EXEC_COMM)?;
+    let pid: u32 = read_at(&ctx, SCHED_PROCESS_EXEC_PID)?;
     let ppid = {
         let from_tree = crate::helpers::lookup_ppid(pid);
         if from_tree != 0 {

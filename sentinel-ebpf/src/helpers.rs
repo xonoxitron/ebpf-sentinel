@@ -36,6 +36,15 @@ pub fn read_uid_gid() -> (u32, u32) {
     (val as u32, (val >> 32) as u32)
 }
 
+pub fn read_kernel_comm(ptr: *const u8, dest: &mut [u8; MAX_COMM_LEN]) {
+    if ptr.is_null() {
+        return;
+    }
+    unsafe {
+        let _ = aya_ebpf::helpers::bpf_probe_read_kernel_buf(ptr, dest);
+    }
+}
+
 pub fn read_user_path(ptr: *const u8, dest: &mut [u8; MAX_PATH_LEN]) {
     if ptr.is_null() {
         return;
