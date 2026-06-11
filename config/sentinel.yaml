@@ -20,3 +20,12 @@ triage:
   api_key_env: ANTHROPIC_API_KEY
   model: claude-sonnet-4-20250514
   max_tokens: 1024
+
+suppression:
+  default:
+    max_alerts: 10
+    window_secs: 60
+  rules:
+    FIM-001:
+      max_alerts: 1
+      window_secs: 300

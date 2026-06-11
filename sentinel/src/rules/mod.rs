@@ -169,6 +169,14 @@ impl RuleEngine {
             .unwrap_or(false)
     }
 
+    pub fn should_alert(&self, rule_id: &str) -> bool {
+        self.rules
+            .iter()
+            .find(|r| r.rule.id == rule_id)
+            .map(|r| r.rule.actions.is_empty() || r.rule.actions.iter().any(|a| a == "alert"))
+            .unwrap_or(true)
+    }
+
     fn matches(&self, compiled: &CompiledRule, event: &EnrichedEvent) -> bool {
         match &compiled.rule.conditions {
             ConditionGroup::All { all } => {

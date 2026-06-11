@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Context as _;
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +15,8 @@ pub struct Config {
     pub triage: TriageConfig,
     #[serde(default = "default_host")]
     pub host: String,
+    #[serde(default)]
+    pub suppression: SuppressionConfig,
 }
 
 fn default_rules_dir() -> String {
@@ -61,6 +65,48 @@ fn default_max_tokens() -> u32 {
     1024
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RateLimitConfig {
+    #[serde(default = "default_max_alerts")]
+    pub max_alerts: u32,
+    #[serde(default = "default_window_secs")]
+    pub window_secs: u64,
+}
+
+fn default_max_alerts() -> u32 {
+    10
+}
+
+fn default_window_secs() -> u64 {
+    60
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            max_alerts: default_max_alerts(),
+            window_secs: default_window_secs(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SuppressionConfig {
+    #[serde(default)]
+    pub default: RateLimitConfig,
+    #[serde(default)]
+    pub rules: HashMap<String, RateLimitConfig>,
+}
+
+impl Default for SuppressionConfig {
+    fn default() -> Self {
+        Self {
+            default: RateLimitConfig::default(),
+            rules: HashMap::new(),
+        }
+    }
+}
+
 impl Default for TriageConfig {
     fn default() -> Self {
         Self {
@@ -84,6 +130,7 @@ impl Default for Config {
             sinks: vec![SinkConfig::Stdout],
             triage: TriageConfig::default(),
             host: default_host(),
+            suppression: SuppressionConfig::default(),
         }
     }
 }

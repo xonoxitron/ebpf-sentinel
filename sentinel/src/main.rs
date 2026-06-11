@@ -5,6 +5,7 @@ mod loader;
 mod pipeline;
 mod rules;
 mod sinks;
+mod suppress;
 mod triage;
 
 use std::path::PathBuf;
@@ -20,6 +21,7 @@ use crate::loader::{raise_memlock_limit, ProbeLoader};
 use crate::pipeline::parse_ring_event;
 use crate::rules::RuleEngine;
 use crate::sinks::{build_sinks, MultiSink};
+use crate::suppress::AlertSuppressor;
 use crate::triage::ClaudeTriage;
 
 #[derive(Debug, Parser)]
@@ -66,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
     let triage = Arc::new(ClaudeTriage::new(config.triage.clone()));
     let host = config.host.clone();
     let enricher = Arc::new(Mutex::new(Enricher::new(host.clone())));
+    let suppressor = Arc::new(AlertSuppressor::new(&config.suppression));
     let emit_events = opt.emit_events;
     let triage_enabled = triage.enabled() && !opt.no_triage;
 
@@ -107,6 +110,7 @@ async fn main() -> anyhow::Result<()> {
                             &sinks,
                             &triage,
                             &enricher,
+                            &suppressor,
                         ).await {
                             log::error!("event processing error: {e:#}");
                         }
@@ -133,6 +137,7 @@ async fn process_event(
     sinks: &MultiSink,
     triage: &ClaudeTriage,
     enricher: &Arc<Mutex<Enricher>>,
+    suppressor: &AlertSuppressor,
 ) -> anyhow::Result<()> {
     let event = {
         let mut guard = enricher.lock().await;
@@ -145,6 +150,17 @@ async fn process_event(
 
     let mut alerts = rules.evaluate(&event);
     for alert in &mut alerts {
+        if !rules.should_alert(&alert.rule_id) {
+            continue;
+        }
+        if !suppressor.allow(&alert.rule_id, alert.event.pid, alert.timestamp_ns) {
+            log::debug!(
+                "suppressed alert {} for pid {}",
+                alert.rule_id,
+                alert.event.pid
+            );
+            continue;
+        }
         if triage_enabled && rules.should_triage(&alert.rule_id) {
             match triage.triage(alert).await {
                 Ok(outcome) => alert.triage = Some(outcome),
