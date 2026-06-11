@@ -1,0 +1,29 @@
+# Lab config: loads only examples/rules/ (not the bundled rules/ set).
+# Paths are relative to the repository root (run sentinel from repo root).
+# Run: ./examples/scripts/live-sensor.sh examples/config/custom-rule-lab.yaml
+# Trigger: ./examples/triggers/custom-rule.sh
+host: sentinel-custom-lab
+
+rules_dir: examples/rules
+sigma_dir: examples/sigma
+
+monitored_paths: []
+
+sinks:
+  - type: stdout
+  - type: ndjson
+    path: /tmp/sentinel/custom-lab.ndjson
+
+triage:
+  enabled: false
+
+metrics:
+  enabled: false
+
+k8s:
+  enabled: false
+
+suppression:
+  default:
+    max_alerts: 100
+    window_secs: 60

@@ -1,4 +1,4 @@
-.PHONY: all build ebpf userspace test clean run fmt clippy demo
+.PHONY: all build ebpf userspace test clean run fmt clippy demo preflight triggers
 
 all: build
 
@@ -35,3 +35,9 @@ ingest:
 
 demo:
 	./examples/demo-detection.sh
+
+preflight:
+	./examples/scripts/preflight.sh
+
+triggers:
+	./examples/triggers/all-bundled.sh

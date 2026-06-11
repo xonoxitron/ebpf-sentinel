@@ -1,0 +1,32 @@
+# Node agent with CRI enrichment (run on a Kubernetes worker or with CRI socket).
+# Mount the CRI socket and enable hostPID — see examples/deploy/daemonset.yaml.
+host: sentinel-k8s-node
+
+rules_dir: rules
+sigma_dir: sigma
+
+monitored_paths:
+  - /etc/passwd
+  - /etc/shadow
+
+sinks:
+  - type: stdout
+  - type: ndjson
+    path: /var/log/sentinel/events.ndjson
+
+triage:
+  enabled: false
+
+metrics:
+  enabled: true
+  listen: "0.0.0.0:9090"
+
+k8s:
+  enabled: true
+  cri_socket: /run/containerd/containerd.sock
+  cache_ttl_secs: 30
+
+suppression:
+  default:
+    max_alerts: 10
+    window_secs: 60

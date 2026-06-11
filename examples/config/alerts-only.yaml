@@ -1,0 +1,29 @@
+# Alerts-only: suppress raw telemetry noise on stdout/NDJSON.
+host: sentinel-alerts-only
+
+rules_dir: rules
+sigma_dir: sigma
+
+monitored_paths:
+  - /etc/passwd
+  - /etc/shadow
+
+sinks:
+  - type: stdout
+  - type: ndjson
+    path: /tmp/sentinel/alerts-only.ndjson
+
+triage:
+  enabled: false
+
+metrics:
+  enabled: true
+  listen: "127.0.0.1:9090"
+
+k8s:
+  enabled: false
+
+suppression:
+  default:
+    max_alerts: 10
+    window_secs: 60

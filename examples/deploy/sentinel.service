@@ -1,0 +1,22 @@
+[Unit]
+Description=ebpf-sentinel Linux endpoint detection agent
+Documentation=https://github.com/xonoxitron/ebpf-sentinel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ebpf-sentinel
+EnvironmentFile=-/etc/ebpf-sentinel/env
+ExecStart=/opt/ebpf-sentinel/target/release/sentinel --config /etc/ebpf-sentinel/sentinel.yaml
+Restart=on-failure
+RestartSec=5
+LimitMEMLOCK=infinity
+
+# Required for eBPF load and tracepoint attach
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+# Minimal Prometheus scrape config for sentinel metrics.
+# Usage: prometheus --config.file=examples/prometheus/prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: ebpf-sentinel
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          host: sentinel-host-01

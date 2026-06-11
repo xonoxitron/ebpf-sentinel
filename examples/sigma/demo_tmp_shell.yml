@@ -1,0 +1,15 @@
+title: Shell from Writable Temp Directory
+id: demo-tmp-shell-001
+status: experimental
+description: Sigma lab rule — shell executed from /tmp (imported with sigma- prefix).
+logsource:
+  category: process_creation
+  product: linux
+detection:
+  selection:
+    Image|endswith: 'sh'
+    CommandLine|contains: '/tmp/'
+  condition: selection
+level: high
+tags:
+  - attack.t1059.004

@@ -1,0 +1,23 @@
+id: DEMO-TMP-ECHO-001
+title: Echo Binary Executed from /tmp
+description: >
+  Lab detection for the custom-rule example. Copy into rules/ to combine
+  with bundled detections, or use examples/config/custom-rule-lab.yaml.
+severity: medium
+enabled: true
+tags: [demo, execution, lab]
+mitre:
+  tactic: Execution
+  technique: T1059.004
+conditions:
+  all:
+    - field: kind
+      op: eq
+      value: exec
+    - field: path
+      op: prefix
+      value: /tmp/
+    - field: comm
+      op: eq
+      value: echo
+actions: [alert]

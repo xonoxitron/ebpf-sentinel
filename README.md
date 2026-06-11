@@ -338,8 +338,15 @@ ebpf-sentinel/
 │   └── sentinel-grpc.yaml       # gRPC sink example
 ├── examples/
 │   ├── demo-detection.sh        # Hands-on demo (no root)
+│   ├── config/                  # alerts-only, FIM lab, triage, K8s, …
+│   ├── rules/                   # Custom rule lab (DEMO-TMP-ECHO-001)
+│   ├── sigma/                   # Sample Sigma imports
+│   ├── triggers/                # Safe detection fire scripts
+│   ├── scripts/                 # live-sensor, watch-alerts, gRPC pipeline
+│   ├── deploy/                  # systemd + DaemonSet manifests
+│   ├── prometheus/              # Scrape config
 │   ├── docker-compose.yml       # grpc-ingest reference stack
-│   └── README.md                # Step-by-step tutorials
+│   └── README.md                # Full examples catalog
 ├── rules/                       # Native YAML detections (MITRE-mapped)
 ├── sigma/                       # Sigma rules (imported at startup)
 ├── docs/                        # PORTABILITY.md, K8S.md

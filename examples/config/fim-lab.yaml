@@ -1,0 +1,34 @@
+# FIM lab: monitors a safe path under /tmp (not production /etc files).
+# Run: sudo -E ./target/release/sentinel --config examples/config/fim-lab.yaml
+# Trigger: ./examples/triggers/fim-lab.sh
+host: sentinel-fim-lab
+
+rules_dir: rules
+sigma_dir: sigma
+
+monitored_paths:
+  - /tmp/sentinel-fim-lab
+
+sinks:
+  - type: stdout
+  - type: ndjson
+    path: /tmp/sentinel/fim-lab.ndjson
+
+triage:
+  enabled: false
+
+metrics:
+  enabled: true
+  listen: "127.0.0.1:9091"
+
+k8s:
+  enabled: false
+
+suppression:
+  default:
+    max_alerts: 10
+    window_secs: 60
+  rules:
+    FIM-001:
+      max_alerts: 5
+      window_secs: 60

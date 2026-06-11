@@ -1,0 +1,32 @@
+# Claude triage enabled — requires ANTHROPIC_API_KEY in the environment.
+host: sentinel-triage-demo
+
+rules_dir: rules
+sigma_dir: sigma
+
+monitored_paths:
+  - /etc/passwd
+  - /etc/shadow
+
+sinks:
+  - type: stdout
+  - type: ndjson
+    path: /tmp/sentinel/triage.ndjson
+
+triage:
+  enabled: true
+  api_key_env: ANTHROPIC_API_KEY
+  model: claude-sonnet-4-20250514
+  max_tokens: 1024
+
+metrics:
+  enabled: true
+  listen: "127.0.0.1:9090"
+
+k8s:
+  enabled: false
+
+suppression:
+  default:
+    max_alerts: 10
+    window_secs: 60

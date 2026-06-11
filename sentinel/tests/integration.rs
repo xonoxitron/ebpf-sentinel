@@ -12,6 +12,22 @@ fn workspace_root() -> PathBuf {
 }
 
 #[test]
+fn loads_examples_custom_rule_lab() {
+    let root = workspace_root();
+    let config = Config {
+        rules_dir: root.join("examples/rules").to_string_lossy().into_owned(),
+        sigma_dir: Some(root.join("examples/sigma").to_string_lossy().into_owned()),
+        ..Config::default()
+    };
+    let engine = RuleEngine::load_from_config(&config).expect("load example rules");
+    assert!(
+        engine.len() >= 2,
+        "expected demo rule + sigma import, got {}",
+        engine.len()
+    );
+}
+
+#[test]
 fn loads_native_and_sigma_rules() {
     let root = workspace_root();
     let config = Config {

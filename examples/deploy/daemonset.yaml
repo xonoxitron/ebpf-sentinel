@@ -1,0 +1,100 @@
+# Reference DaemonSet for Kubernetes nodes.
+# Adjust image, paths, and CRI socket for your cluster.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ebpf-sentinel
+  namespace: kube-system
+  labels:
+    app: ebpf-sentinel
+spec:
+  selector:
+    matchLabels:
+      app: ebpf-sentinel
+  template:
+    metadata:
+      labels:
+        app: ebpf-sentinel
+    spec:
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: sentinel
+          image: ebpf-sentinel:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/sentinel"]
+          args: ["--config", "/etc/sentinel/config.yaml"]
+          securityContext:
+            privileged: true
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: ebpf-sentinel-secrets
+                  key: anthropic-api-key
+                  optional: true
+          ports:
+            - name: metrics
+              containerPort: 9090
+              hostPort: 9090
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/sentinel
+              readOnly: true
+            - name: btf
+              mountPath: /sys/kernel/btf
+              readOnly: true
+            - name: cri-sock
+              mountPath: /run/containerd/containerd.sock
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: ebpf-sentinel-config
+        - name: btf
+          hostPath:
+            path: /sys/kernel/btf
+            type: Directory
+        - name: cri-sock
+          hostPath:
+            path: /run/containerd/containerd.sock
+            type: Socket
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ebpf-sentinel-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    host: sentinel-k8s
+    rules_dir: /etc/sentinel/rules
+    sigma_dir: /etc/sentinel/sigma
+    monitored_paths:
+      - /etc/passwd
+      - /etc/shadow
+    sinks:
+      - type: stdout
+    triage:
+      enabled: false
+    metrics:
+      enabled: true
+      listen: "0.0.0.0:9090"
+    k8s:
+      enabled: true
+      cri_socket: /run/containerd/containerd.sock
+      cache_ttl_secs: 30
+    suppression:
+      default:
+        max_alerts: 10
+        window_secs: 60
