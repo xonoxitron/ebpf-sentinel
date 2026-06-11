@@ -287,6 +287,16 @@ ebpf-sentinel/
 | `sinks` | `stdout`, `ndjson`, or `grpc` outputs |
 | `triage` | Claude model, token limit, API key env var |
 | `host` | Hostname label on events/alerts |
+| `metrics` | Prometheus scrape endpoint (`sentinel_events_total`, `sentinel_alerts_total`) |
+| `suppression` | Per-rule alert rate limits |
+
+### Prometheus
+
+When `metrics.enabled: true`, scrape `http://<host>:9090/metrics`:
+
+```bash
+curl -s localhost:9090/metrics | grep sentinel_
+```
 
 ---
 
@@ -295,7 +305,7 @@ ebpf-sentinel/
 - [x] CO-RE / BTF portability hardening for multi-kernel fleets
 - [x] IPv6 connect telemetry (`sys_enter_connect` v6 parsing)
 - [x] Alert suppression and per-rule rate limiting
-- [ ] Prometheus metrics (`sentinel_events_total`, `sentinel_alerts_total`)
+- [x] Prometheus metrics (`sentinel_events_total`, `sentinel_alerts_total`)
 - [ ] Kubernetes pod metadata enrichment (CRI / container ID)
 - [ ] Sigma rule import
 - [ ] Integration tests with `testcontainers` + privileged CI runners

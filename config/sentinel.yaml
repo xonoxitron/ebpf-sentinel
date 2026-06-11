@@ -21,6 +21,10 @@ triage:
   model: claude-sonnet-4-20250514
   max_tokens: 1024
 
+metrics:
+  enabled: true
+  listen: "0.0.0.0:9090"
+
 suppression:
   default:
     max_alerts: 10

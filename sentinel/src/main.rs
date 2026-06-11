@@ -2,6 +2,7 @@ mod config;
 mod enricher;
 mod event;
 mod loader;
+mod metrics;
 mod pipeline;
 mod rules;
 mod sinks;
@@ -18,6 +19,7 @@ use tokio::sync::{mpsc, Mutex};
 use crate::config::Config;
 use crate::enricher::Enricher;
 use crate::loader::{raise_memlock_limit, ProbeLoader};
+use crate::metrics::{serve_metrics, SentinelMetrics};
 use crate::pipeline::parse_ring_event;
 use crate::rules::RuleEngine;
 use crate::sinks::{build_sinks, MultiSink};
@@ -69,10 +71,22 @@ async fn main() -> anyhow::Result<()> {
     let host = config.host.clone();
     let enricher = Arc::new(Mutex::new(Enricher::new(host.clone())));
     let suppressor = Arc::new(AlertSuppressor::new(&config.suppression));
+    let metrics = Arc::new(SentinelMetrics::new()?);
     let emit_events = opt.emit_events;
     let triage_enabled = triage.enabled() && !opt.no_triage;
 
+    if config.metrics.enabled {
+        let listen = config.metrics.listen.clone();
+        let metrics_server = metrics.clone();
+        tokio::spawn(async move {
+            if let Err(e) = serve_metrics(listen, metrics_server).await {
+                log::error!("metrics server failed: {e:#}");
+            }
+        });
+    }
+
     let (tx, mut rx) = mpsc::channel::<SentinelEvent>(4096);
+    let metrics_ring = metrics.clone();
 
     tokio::task::spawn_blocking(move || loop {
         while let Some(item) = ring_buf.next() {
@@ -82,11 +96,14 @@ async fn main() -> anyhow::Result<()> {
                         return;
                     }
                 }
-                None => log::warn!(
-                    "dropping ring buffer record with invalid size (got {}, expected {})",
-                    item.len(),
-                    core::mem::size_of::<SentinelEvent>()
-                ),
+                None => {
+                    metrics_ring.inc_ring_parse_error();
+                    log::warn!(
+                        "dropping ring buffer record with invalid size (got {}, expected {})",
+                        item.len(),
+                        core::mem::size_of::<SentinelEvent>()
+                    );
+                }
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -111,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
                             &triage,
                             &enricher,
                             &suppressor,
+                            &metrics,
                         ).await {
                             log::error!("event processing error: {e:#}");
                         }
@@ -138,11 +156,14 @@ async fn process_event(
     triage: &ClaudeTriage,
     enricher: &Arc<Mutex<Enricher>>,
     suppressor: &AlertSuppressor,
+    metrics: &SentinelMetrics,
 ) -> anyhow::Result<()> {
     let event = {
         let mut guard = enricher.lock().await;
         guard.enrich(raw)
     };
+
+    metrics.inc_event(&event.kind, &event.host);
 
     if emit_events {
         sinks.emit_event(&event).await?;
@@ -154,6 +175,7 @@ async fn process_event(
             continue;
         }
         if !suppressor.allow(&alert.rule_id, alert.event.pid, alert.timestamp_ns) {
+            metrics.inc_suppressed(&alert.rule_id);
             log::debug!(
                 "suppressed alert {} for pid {}",
                 alert.rule_id,
@@ -167,6 +189,7 @@ async fn process_event(
                 Err(e) => log::warn!("triage failed for {}: {e:#}", alert.rule_id),
             }
         }
+        metrics.inc_alert(&alert.rule_id, &alert.severity, &alert.event.host);
         sinks.emit_alert(alert).await?;
     }
 

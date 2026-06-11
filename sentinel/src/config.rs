@@ -17,6 +17,8 @@ pub struct Config {
     pub host: String,
     #[serde(default)]
     pub suppression: SuppressionConfig,
+    #[serde(default)]
+    pub metrics: MetricsConfig,
 }
 
 fn default_rules_dir() -> String {
@@ -98,6 +100,27 @@ pub struct SuppressionConfig {
     pub rules: HashMap<String, RateLimitConfig>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MetricsConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_metrics_listen")]
+    pub listen: String,
+}
+
+fn default_metrics_listen() -> String {
+    "0.0.0.0:9090".into()
+}
+
+impl Default for MetricsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            listen: default_metrics_listen(),
+        }
+    }
+}
+
 impl Default for SuppressionConfig {
     fn default() -> Self {
         Self {
@@ -131,6 +154,7 @@ impl Default for Config {
             triage: TriageConfig::default(),
             host: default_host(),
             suppression: SuppressionConfig::default(),
+            metrics: MetricsConfig::default(),
         }
     }
 }
