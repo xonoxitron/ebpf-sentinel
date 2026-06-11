@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 default-run = "sentinel"
 
+[lib]
+name = "sentinel"
+path = "src/lib.rs"
+
 [dependencies]
 sentinel-common = { path = "../sentinel-common", features = ["user"] }
 
@@ -39,6 +43,10 @@ prometheus = "0.13"
 hyper = { version = "1", default-features = false, features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 tower = "0.5"
+
+[dev-dependencies]
+testcontainers = "0.23"
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [build-dependencies]
 anyhow = { workspace = true }

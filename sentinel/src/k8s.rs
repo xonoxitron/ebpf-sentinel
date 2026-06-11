@@ -155,7 +155,7 @@ async fn connect_cri(
     use hyper::Uri;
     use hyper_util::rt::TokioIo;
     use tokio::net::UnixStream;
-    use tonic::transport::{Channel, Endpoint};
+    use tonic::transport::Endpoint;
     use tower::service_fn;
 
     if !Path::new(socket_path).exists() {

@@ -1,15 +1,3 @@
-mod config;
-mod enricher;
-mod event;
-mod k8s;
-mod loader;
-mod metrics;
-mod pipeline;
-mod rules;
-mod sinks;
-mod suppress;
-mod triage;
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -17,16 +5,16 @@ use clap::Parser;
 use sentinel_common::SentinelEvent;
 use tokio::sync::{mpsc, Mutex};
 
-use crate::config::Config;
-use crate::enricher::Enricher;
-use crate::k8s::K8sMetadataCache;
-use crate::loader::{raise_memlock_limit, ProbeLoader};
-use crate::metrics::{serve_metrics, SentinelMetrics};
-use crate::pipeline::parse_ring_event;
-use crate::rules::RuleEngine;
-use crate::sinks::{build_sinks, MultiSink};
-use crate::suppress::AlertSuppressor;
-use crate::triage::ClaudeTriage;
+use sentinel::config::Config;
+use sentinel::enricher::Enricher;
+use sentinel::k8s::K8sMetadataCache;
+use sentinel::loader::{raise_memlock_limit, ProbeLoader};
+use sentinel::metrics::{serve_metrics, SentinelMetrics};
+use sentinel::pipeline::parse_ring_event;
+use sentinel::rules::RuleEngine;
+use sentinel::sinks::{build_sinks, MultiSink};
+use sentinel::suppress::AlertSuppressor;
+use sentinel::triage::ClaudeTriage;
 
 #[derive(Debug, Parser)]
 #[command(name = "sentinel", about = "eBPF Linux endpoint detection agent")]

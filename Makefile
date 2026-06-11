@@ -8,8 +8,12 @@ ebpf userspace:
 	cargo build --release -p sentinel --bin sentinel
 
 test:
-	cargo test --release -p sentinel --bin sentinel
+	cargo test --release -p sentinel --lib
 	cargo test --release -p sentinel-common
+
+integration:
+	cargo test --release -p sentinel --test integration
+	sudo -E cargo test --release -p sentinel --test integration -- --ignored --test-threads=1
 
 clean:
 	cargo clean

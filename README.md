@@ -313,7 +313,7 @@ curl -s localhost:9090/metrics | grep sentinel_
 - [x] Prometheus metrics (`sentinel_events_total`, `sentinel_alerts_total`)
 - [x] Kubernetes pod metadata enrichment (CRI / container ID)
 - [x] Sigma rule import
-- [ ] Integration tests with `testcontainers` + privileged CI runners
+- [x] Integration tests with `testcontainers` + privileged CI runners
 
 ---
 
@@ -321,6 +321,7 @@ curl -s localhost:9090/metrics | grep sentinel_
 
 ```bash
 make test      # unit tests
+make integration  # integration + sudo eBPF tests
 make fmt       # rustfmt
 make clippy    # lint (strict)
 make ingest    # run gRPC reference server
