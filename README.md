@@ -306,7 +306,7 @@ curl -s localhost:9090/metrics | grep sentinel_
 - [x] IPv6 connect telemetry (`sys_enter_connect` v6 parsing)
 - [x] Alert suppression and per-rule rate limiting
 - [x] Prometheus metrics (`sentinel_events_total`, `sentinel_alerts_total`)
-- [ ] Kubernetes pod metadata enrichment (CRI / container ID)
+- [x] Kubernetes pod metadata enrichment (CRI / container ID)
 - [ ] Sigma rule import
 - [ ] Integration tests with `testcontainers` + privileged CI runners
 

@@ -19,6 +19,8 @@ pub struct Config {
     pub suppression: SuppressionConfig,
     #[serde(default)]
     pub metrics: MetricsConfig,
+    #[serde(default)]
+    pub k8s: K8sConfig,
 }
 
 fn default_rules_dir() -> String {
@@ -112,6 +114,34 @@ fn default_metrics_listen() -> String {
     "0.0.0.0:9090".into()
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct K8sConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_cri_socket")]
+    pub cri_socket: String,
+    #[serde(default = "default_cache_ttl")]
+    pub cache_ttl_secs: u64,
+}
+
+fn default_cri_socket() -> String {
+    "/run/containerd/containerd.sock".into()
+}
+
+fn default_cache_ttl() -> u64 {
+    30
+}
+
+impl Default for K8sConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            cri_socket: default_cri_socket(),
+            cache_ttl_secs: default_cache_ttl(),
+        }
+    }
+}
+
 impl Default for MetricsConfig {
     fn default() -> Self {
         Self {
@@ -155,6 +185,7 @@ impl Default for Config {
             host: default_host(),
             suppression: SuppressionConfig::default(),
             metrics: MetricsConfig::default(),
+            k8s: K8sConfig::default(),
         }
     }
 }

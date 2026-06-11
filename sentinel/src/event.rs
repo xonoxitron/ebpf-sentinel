@@ -40,6 +40,14 @@ pub struct EnrichedEvent {
     pub flags: u32,
     pub lineage: Vec<String>,
     pub host: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub container_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pod_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pod_namespace: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pod_image: Option<String>,
 }
 
 impl EnrichedEvent {
@@ -59,6 +67,10 @@ impl EnrichedEvent {
             "flags" => Some(self.flags.to_string()),
             "host" => Some(self.host.clone()),
             "lineage" => Some(self.lineage.join(",")),
+            "container_id" => self.container_id.clone(),
+            "pod_name" => self.pod_name.clone(),
+            "namespace" | "pod_namespace" => self.pod_namespace.clone(),
+            "pod_image" | "image" => self.pod_image.clone(),
             _ => None,
         }
     }

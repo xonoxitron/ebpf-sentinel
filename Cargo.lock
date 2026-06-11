@@ -1716,6 +1716,8 @@ dependencies = [
  "clap",
  "env_logger",
  "glob",
+ "hyper",
+ "hyper-util",
  "libc",
  "log",
  "prometheus",
@@ -1731,6 +1733,7 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-build",
+ "tower 0.5.3",
 ]
 
 [[package]]

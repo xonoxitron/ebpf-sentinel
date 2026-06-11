@@ -25,6 +25,11 @@ metrics:
   enabled: true
   listen: "0.0.0.0:9090"
 
+k8s:
+  enabled: false
+  cri_socket: /run/containerd/containerd.sock
+  cache_ttl_secs: 30
+
 suppression:
   default:
     max_alerts: 10

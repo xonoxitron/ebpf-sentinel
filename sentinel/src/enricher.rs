@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
+use std::sync::Arc;
+
 use crate::event::EnrichedEvent;
+use crate::k8s::K8sMetadataCache;
 use sentinel_common::{EventKind, SentinelEvent, MAX_COMM_LEN, MAX_PATH_LEN};
 
 #[derive(Clone, Default)]
@@ -13,6 +16,7 @@ pub struct Enricher {
     host: String,
     processes: HashMap<u32, ProcessInfo>,
     max_lineage: usize,
+    k8s: Option<Arc<K8sMetadataCache>>,
 }
 
 impl Enricher {
@@ -21,7 +25,13 @@ impl Enricher {
             host: host.into(),
             processes: HashMap::new(),
             max_lineage: 8,
+            k8s: None,
         }
+    }
+
+    pub fn with_k8s(mut self, cache: Arc<K8sMetadataCache>) -> Self {
+        self.k8s = Some(cache);
+        self
     }
 
     pub fn enrich(&mut self, raw: SentinelEvent) -> EnrichedEvent {
@@ -69,6 +79,11 @@ impl Enricher {
         )
         .map(|ts| ts.to_rfc3339());
 
+        let k8s = self
+            .k8s
+            .as_ref()
+            .and_then(|cache| cache.lookup_by_pid(raw.pid));
+
         EnrichedEvent {
             kind,
             pid: raw.pid,
@@ -86,6 +101,19 @@ impl Enricher {
             flags: raw.flags,
             lineage: self.lineage(raw.ppid),
             host: self.host.clone(),
+            container_id: k8s.as_ref().map(|m| m.container_id.clone()),
+            pod_name: k8s
+                .as_ref()
+                .map(|m| m.pod_name.clone())
+                .filter(|s| !s.is_empty()),
+            pod_namespace: k8s
+                .as_ref()
+                .map(|m| m.pod_namespace.clone())
+                .filter(|s| !s.is_empty()),
+            pod_image: k8s
+                .as_ref()
+                .map(|m| m.pod_image.clone())
+                .filter(|s| !s.is_empty()),
         }
     }
 

@@ -1,6 +1,7 @@
 mod config;
 mod enricher;
 mod event;
+mod k8s;
 mod loader;
 mod metrics;
 mod pipeline;
@@ -18,6 +19,7 @@ use tokio::sync::{mpsc, Mutex};
 
 use crate::config::Config;
 use crate::enricher::Enricher;
+use crate::k8s::K8sMetadataCache;
 use crate::loader::{raise_memlock_limit, ProbeLoader};
 use crate::metrics::{serve_metrics, SentinelMetrics};
 use crate::pipeline::parse_ring_event;
@@ -69,7 +71,21 @@ async fn main() -> anyhow::Result<()> {
     let sinks = Arc::new(MultiSink::new(build_sinks(&config.sinks)?));
     let triage = Arc::new(ClaudeTriage::new(config.triage.clone()));
     let host = config.host.clone();
-    let enricher = Arc::new(Mutex::new(Enricher::new(host.clone())));
+    let k8s_cache = if config.k8s.enabled {
+        let cache = Arc::new(K8sMetadataCache::new(config.k8s.clone()));
+        let refresh = cache.clone();
+        tokio::spawn(async move {
+            refresh.refresh_loop().await;
+        });
+        Some(cache)
+    } else {
+        None
+    };
+    let mut enricher_builder = Enricher::new(host.clone());
+    if let Some(cache) = k8s_cache {
+        enricher_builder = enricher_builder.with_k8s(cache);
+    }
+    let enricher = Arc::new(Mutex::new(enricher_builder));
     let suppressor = Arc::new(AlertSuppressor::new(&config.suppression));
     let metrics = Arc::new(SentinelMetrics::new()?);
     let emit_events = opt.emit_events;

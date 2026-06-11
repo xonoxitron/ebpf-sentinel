@@ -36,6 +36,9 @@ tokio = { workspace = true, features = [
 tonic = { workspace = true, features = ["transport"] }
 regex = "1"
 prometheus = "0.13"
+hyper = { version = "1", default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+tower = "0.5"
 
 [build-dependencies]
 anyhow = { workspace = true }

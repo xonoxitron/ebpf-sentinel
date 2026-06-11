@@ -19,6 +19,10 @@ message Event {
   string parent_comm = 14;
   uint32 addr_family = 15;
   string dst_addr_v6 = 16;
+  string container_id = 17;
+  string pod_name = 18;
+  string pod_namespace = 19;
+  string pod_image = 20;
 }
 
 message MitreAttack {

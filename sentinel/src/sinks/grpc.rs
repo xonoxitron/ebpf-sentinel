@@ -63,6 +63,10 @@ fn event_to_pb(event: &EnrichedEvent) -> PbEvent {
         } else {
             String::new()
         },
+        container_id: event.container_id.clone().unwrap_or_default(),
+        pod_name: event.pod_name.clone().unwrap_or_default(),
+        pod_namespace: event.pod_namespace.clone().unwrap_or_default(),
+        pod_image: event.pod_image.clone().unwrap_or_default(),
     }
 }
 

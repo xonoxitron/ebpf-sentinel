@@ -8,7 +8,13 @@ fn main() -> anyhow::Result<()> {
         .build_server(true)
         .build_client(true)
         .compile_protos(&["proto/sentinel.proto"], &["proto/"])
-        .context("compile protos")?;
+        .context("compile sentinel protos")?;
+
+    tonic_build::configure()
+        .build_server(false)
+        .build_client(true)
+        .compile_protos(&["proto/cri/api.proto"], &["proto/cri/"])
+        .context("compile cri protos")?;
 
     let cargo_metadata::Metadata { packages, .. } = cargo_metadata::MetadataCommand::new()
         .no_deps()

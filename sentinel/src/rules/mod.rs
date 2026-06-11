@@ -293,6 +293,10 @@ mod tests {
             flags: 0,
             lineage: vec![],
             host: "test".into(),
+            container_id: None,
+            pod_name: None,
+            pod_namespace: None,
+            pod_image: None,
         }
     }
 
