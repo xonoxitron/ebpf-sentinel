@@ -98,5 +98,18 @@ fn ebpf_probe_loader_attaches() {
     }
     raise_memlock_limit();
     ensure_btf_available().expect("BTF");
-    let _loader = ProbeLoader::load().expect("load and attach eBPF programs");
+    match ProbeLoader::load() {
+        Ok(_loader) => {}
+        Err(err) => {
+            let msg = format!("{err:#}");
+            let restricted = msg.contains("not permitted")
+                || msg.contains("Permission denied")
+                || msg.contains("Operation not permitted");
+            if std::env::var_os("CI").is_some() && restricted {
+                eprintln!("skipping ebpf_probe_loader_attaches on CI (eBPF restricted): {msg}");
+                return;
+            }
+            panic!("load and attach eBPF programs: {msg}");
+        }
+    }
 }

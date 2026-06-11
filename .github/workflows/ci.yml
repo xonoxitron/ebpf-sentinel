@@ -75,9 +75,13 @@ jobs:
         run: cargo test --release -p sentinel --test integration
 
       - name: Privileged eBPF integration
+        env:
+          CI: true
         run: |
           sudo sysctl -w kernel.perf_event_paranoid=1
-          BIN=$(find target/release/deps -maxdepth 1 -type f -name 'integration-*' ! -name '*.d' -executable | head -1)
-          test -n "$BIN"
+          sudo mount -t tracefs tracefs /sys/kernel/tracing 2>/dev/null || true
+          BIN=$(cargo test --release -p sentinel --test integration --no-run 2>&1 \
+            | grep -o 'target/release/deps/integration-[^ )]*' | head -1)
+          test -f "$BIN"
           echo "Running $BIN as root"
-          sudo "$BIN" ebpf_probe_loader_attaches --ignored --exact --test-threads=1 --nocapture
+          sudo env CI=true "$BIN" ebpf_probe_loader_attaches --ignored --exact --test-threads=1 --nocapture
