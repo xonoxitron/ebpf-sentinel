@@ -1,0 +1,16 @@
+title: Shell Spawned by Netcat
+id: sentinel-sigma-nc-shell
+status: experimental
+description: Interactive shell spawned by netcat, consistent with reverse shell activity.
+logsource:
+  category: process_creation
+  product: linux
+detection:
+  selection:
+    ParentImage|endswith: '/nc'
+    Image|endswith: 'bash'
+  condition: selection
+level: critical
+tags:
+  - attack.t1059.004
+  - attack.execution

@@ -8,6 +8,8 @@ pub struct Config {
     #[serde(default = "default_rules_dir")]
     pub rules_dir: String,
     #[serde(default)]
+    pub sigma_dir: Option<String>,
+    #[serde(default)]
     pub monitored_paths: Vec<String>,
     #[serde(default)]
     pub sinks: Vec<SinkConfig>,
@@ -175,6 +177,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             rules_dir: default_rules_dir(),
+            sigma_dir: Some("sigma".into()),
             monitored_paths: vec![
                 "/etc/passwd".into(),
                 "/etc/shadow".into(),

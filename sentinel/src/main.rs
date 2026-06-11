@@ -65,9 +65,7 @@ async fn main() -> anyhow::Result<()> {
     loader.seed_process_tree()?;
 
     let mut ring_buf = loader.ring_buf()?;
-    let rules = Arc::new(RuleEngine::load_dir(
-        PathBuf::from(&config.rules_dir).as_path(),
-    )?);
+    let rules = Arc::new(RuleEngine::load_from_config(&config)?);
     let sinks = Arc::new(MultiSink::new(build_sinks(&config.sinks)?));
     let triage = Arc::new(ClaudeTriage::new(config.triage.clone()));
     let host = config.host.clone();

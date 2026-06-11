@@ -283,12 +283,17 @@ ebpf-sentinel/
 | Key | Description |
 |-----|-------------|
 | `rules_dir` | Path to YAML detection rules |
+| `sigma_dir` | Optional Sigma rule import directory (`sigma-{id}` prefix) |
 | `monitored_paths` | FIM path prefixes pushed to eBPF map |
 | `sinks` | `stdout`, `ndjson`, or `grpc` outputs |
 | `triage` | Claude model, token limit, API key env var |
 | `host` | Hostname label on events/alerts |
 | `metrics` | Prometheus scrape endpoint (`sentinel_events_total`, `sentinel_alerts_total`) |
 | `suppression` | Per-rule alert rate limits |
+
+### Sigma import
+
+Sigma YAML rules under `sigma_dir` are translated into native rules. Supported mappings include `Image` → `comm`, `ParentImage` → `parent_comm`, `CommandLine` → `path`, and `logsource.category` → `kind`.
 
 ### Prometheus
 
@@ -307,7 +312,7 @@ curl -s localhost:9090/metrics | grep sentinel_
 - [x] Alert suppression and per-rule rate limiting
 - [x] Prometheus metrics (`sentinel_events_total`, `sentinel_alerts_total`)
 - [x] Kubernetes pod metadata enrichment (CRI / container ID)
-- [ ] Sigma rule import
+- [x] Sigma rule import
 - [ ] Integration tests with `testcontainers` + privileged CI runners
 
 ---

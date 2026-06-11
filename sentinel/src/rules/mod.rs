@@ -6,7 +6,10 @@ use glob::glob;
 use regex::Regex;
 use serde::Deserialize;
 
+use crate::config::Config;
 use crate::event::{Alert, EnrichedEvent, MitreAttack};
+
+mod sigma;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RuleSet {
@@ -88,6 +91,17 @@ pub struct RuleEngine {
 }
 
 impl RuleEngine {
+    pub fn load_from_config(config: &Config) -> anyhow::Result<Self> {
+        let mut engine = Self::load_dir(Path::new(&config.rules_dir))?;
+        if let Some(sigma_dir) = &config.sigma_dir {
+            let imported = sigma::load_sigma_dir(Path::new(sigma_dir))?;
+            for rule in imported {
+                engine.rules.push(CompiledRule::new(rule)?);
+            }
+        }
+        Ok(engine)
+    }
+
     pub fn load_dir(dir: &Path) -> anyhow::Result<Self> {
         let pattern = dir.join("**/*.yaml").to_string_lossy().into_owned();
         let mut rules = Vec::new();

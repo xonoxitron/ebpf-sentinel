@@ -3,6 +3,7 @@
 host: sentinel-host-01
 
 rules_dir: rules
+sigma_dir: sigma
 
 monitored_paths:
   - /etc/passwd
