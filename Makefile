@@ -12,9 +12,11 @@ test:
 	cargo test --release -p sentinel-common
 
 integration:
+	cargo test --release -p sentinel --test integration --no-run
 	cargo test --release -p sentinel --test integration
-	sudo env "PATH=$$PATH" "HOME=$$HOME" "CARGO_HOME=$${CARGO_HOME:-$$HOME/.cargo}" "RUSTUP_HOME=$${RUSTUP_HOME:-$$HOME/.rustup}" \
-		$$(command -v cargo) test --release -p sentinel --test integration -- --ignored --test-threads=1
+	sudo sysctl -w kernel.perf_event_paranoid=1 2>/dev/null || true
+	sudo $$(find target/release/deps -maxdepth 1 -type f -name 'integration-*' ! -name '*.d' -executable | head -1) \
+		ebpf_probe_loader_attaches --ignored --exact --test-threads=1 --nocapture
 
 clean:
 	cargo clean

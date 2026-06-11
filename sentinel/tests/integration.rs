@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use sentinel::config::Config;
 use sentinel::enricher::Enricher;
 use sentinel::k8s::container_id_from_cgroup;
-use sentinel::loader::{ensure_btf_available, ProbeLoader};
+use sentinel::loader::{ensure_btf_available, raise_memlock_limit, ProbeLoader};
 use sentinel::rules::RuleEngine;
 use sentinel_common::{EventKind, SentinelEvent, MAX_COMM_LEN, MAX_PATH_LEN};
 
@@ -92,6 +92,11 @@ async fn testcontainers_privileged_smoke() {
 #[test]
 #[ignore = "requires root, BTF, and CAP_BPF"]
 fn ebpf_probe_loader_attaches() {
+    if !std::path::Path::new("/sys/kernel/btf/vmlinux").exists() {
+        eprintln!("skipping ebpf_probe_loader_attaches: kernel BTF unavailable");
+        return;
+    }
+    raise_memlock_limit();
     ensure_btf_available().expect("BTF");
     let _loader = ProbeLoader::load().expect("load and attach eBPF programs");
 }
