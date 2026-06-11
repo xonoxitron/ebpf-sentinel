@@ -279,6 +279,7 @@ mod tests {
             comm: "bash".into(),
             parent_comm: "nc".into(),
             path: path.into(),
+            addr_family: None,
             dst_addr: None,
             dst_port: None,
             flags: 0,

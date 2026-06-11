@@ -57,6 +57,12 @@ fn event_to_pb(event: &EnrichedEvent) -> PbEvent {
         lineage: event.lineage.clone(),
         host: event.host.clone(),
         parent_comm: event.parent_comm.clone(),
+        addr_family: event.addr_family.unwrap_or(0) as u32,
+        dst_addr_v6: if event.addr_family == Some(sentinel_common::AF_INET6) {
+            event.dst_addr.clone().unwrap_or_default()
+        } else {
+            String::new()
+        },
     }
 }
 

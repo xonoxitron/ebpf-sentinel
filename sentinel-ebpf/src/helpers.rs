@@ -90,8 +90,10 @@ pub fn emit_event(
         comm,
         path,
         flags,
+        0,
         dst_addr,
         dst_port,
+        [0u8; 16],
     );
 }
 
@@ -102,8 +104,10 @@ pub fn emit_event_with_pid(
     comm: [u8; MAX_COMM_LEN],
     path: [u8; MAX_PATH_LEN],
     flags: u32,
+    addr_family: u8,
     dst_addr: u32,
     dst_port: u16,
+    dst_addr_v6: [u8; 16],
 ) {
     let Some(scratch) = SCRATCH.get_ptr_mut(0) else {
         return;
@@ -121,8 +125,11 @@ pub fn emit_event_with_pid(
         gid: 0,
         timestamp_ns: unsafe { bpf_ktime_get_ns() },
         comm,
-        dst_addr,
+        addr_family,
+        _pad: [0],
         dst_port,
+        dst_addr,
+        dst_addr_v6,
         flags,
         path,
     };

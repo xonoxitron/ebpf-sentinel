@@ -17,6 +17,8 @@ message Event {
   repeated string lineage = 12;
   string host = 13;
   string parent_comm = 14;
+  uint32 addr_family = 15;
+  string dst_addr_v6 = 16;
 }
 
 message MitreAttack {

@@ -47,11 +47,18 @@ pub struct SentinelEvent {
     pub gid: u32,
     pub timestamp_ns: u64,
     pub comm: [u8; MAX_COMM_LEN],
-    pub dst_addr: u32,
+    pub addr_family: u8,
+    pub _pad: [u8; 1],
     pub dst_port: u16,
+    pub dst_addr: u32,
+    pub dst_addr_v6: [u8; 16],
     pub flags: u32,
     pub path: [u8; MAX_PATH_LEN],
 }
+
+/// `AF_INET` / `AF_INET6` values from Linux `socket.h`.
+pub const AF_INET: u8 = 2;
+pub const AF_INET6: u8 = 10;
 
 #[cfg(feature = "user")]
 unsafe impl aya::Pod for ProcessNode {}

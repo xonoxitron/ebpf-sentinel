@@ -1,0 +1,19 @@
+id: NET-IPv6-001
+title: Outbound IPv6 Connect
+description: >
+  Process initiated an outbound TCP/UDP connection over IPv6.
+severity: low
+enabled: true
+tags: [network, ipv6]
+mitre:
+  tactic: Command and Control
+  technique: T1071
+conditions:
+  all:
+    - field: kind
+      op: eq
+      value: connect
+    - field: addr_family
+      op: eq
+      value: 10
+actions: [alert]

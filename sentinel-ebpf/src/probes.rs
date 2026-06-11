@@ -3,7 +3,7 @@ use aya_ebpf::{
     macros::{btf_tracepoint, tracepoint},
     programs::{BtfTracePointContext, TracePointContext},
 };
-use sentinel_common::{EventKind, MAX_COMM_LEN, MAX_PATH_LEN};
+use sentinel_common::{EventKind, AF_INET, AF_INET6, MAX_COMM_LEN, MAX_PATH_LEN};
 
 use crate::helpers::{
     current_pid, emit_event, emit_event_with_pid, path_matches_monitored, read_at, read_comm,
@@ -13,8 +13,6 @@ use crate::tracepoint_offsets::{
     SCHED_PROCESS_EXEC_COMM, SCHED_PROCESS_EXEC_PID, SYS_ENTER_CONNECT_ADDR,
     SYS_ENTER_EXECVE_FILENAME, SYS_ENTER_OPENAT_FILENAME, SYS_ENTER_OPENAT_FLAGS,
 };
-
-const AF_INET: u16 = 2;
 
 #[tracepoint(category = "syscalls", name = "sys_enter_execve")]
 pub fn sys_enter_execve(ctx: TracePointContext) -> u32 {
@@ -50,25 +48,44 @@ fn try_connect(ctx: TracePointContext) -> Result<(), ()> {
         return Ok(());
     }
 
-    let sa_buf: [u8; 8] =
-        unsafe { bpf_probe_read_user(addr_ptr as *const [u8; 8]) }.unwrap_or([0; 8]);
-    let sa_family = u16::from_ne_bytes([sa_buf[0], sa_buf[1]]);
-
+    let mut addr_family = 0u8;
     let mut dst_port = 0u16;
     let mut dst_addr = 0u32;
-    if sa_family == AF_INET {
-        let port = u16::from_ne_bytes([sa_buf[2], sa_buf[3]]);
-        dst_addr = u32::from_ne_bytes([sa_buf[4], sa_buf[5], sa_buf[6], sa_buf[7]]);
-        dst_port = u16::from_be(port);
+    let mut dst_addr_v6 = [0u8; 16];
+
+    if let Ok(sa_buf) = unsafe { bpf_probe_read_user(addr_ptr as *const [u8; 8]) } {
+        let sa_family = u16::from_ne_bytes([sa_buf[0], sa_buf[1]]);
+        if sa_family == AF_INET as u16 {
+            let port = u16::from_ne_bytes([sa_buf[2], sa_buf[3]]);
+            dst_addr = u32::from_ne_bytes([sa_buf[4], sa_buf[5], sa_buf[6], sa_buf[7]]);
+            dst_port = u16::from_be(port);
+            addr_family = AF_INET;
+        }
     }
 
-    emit_event(
+    if addr_family == 0 {
+        if let Ok(sa6) = unsafe { bpf_probe_read_user(addr_ptr as *const [u8; 28]) } {
+            let sa_family = u16::from_ne_bytes([sa6[0], sa6[1]]);
+            if sa_family == AF_INET6 as u16 {
+                let port = u16::from_ne_bytes([sa6[2], sa6[3]]);
+                dst_port = u16::from_be(port);
+                dst_addr_v6.copy_from_slice(&sa6[8..24]);
+                addr_family = AF_INET6;
+            }
+        }
+    }
+
+    emit_event_with_pid(
         EventKind::Connect,
+        current_pid(),
+        crate::helpers::current_ppid(),
         comm,
         [0u8; MAX_PATH_LEN],
         0,
+        addr_family,
         dst_addr,
         dst_port,
+        dst_addr_v6,
     );
     Ok(())
 }
@@ -124,6 +141,8 @@ unsafe fn try_fork(ctx: BtfTracePointContext) -> Result<(), ()> {
         0,
         0,
         0,
+        0,
+        [0u8; 16],
     );
     Ok(())
 }

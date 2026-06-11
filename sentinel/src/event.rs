@@ -33,6 +33,8 @@ pub struct EnrichedEvent {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub parent_comm: String,
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub addr_family: Option<u8>,
     pub dst_addr: Option<String>,
     pub dst_port: Option<u16>,
     pub flags: u32,
@@ -51,6 +53,7 @@ impl EnrichedEvent {
             "comm" => Some(self.comm.clone()),
             "parent_comm" => Some(self.parent_comm.clone()),
             "path" | "filename" => Some(self.path.clone()),
+            "addr_family" => self.addr_family.map(|f| f.to_string()),
             "dst_addr" | "dst" => self.dst_addr.clone(),
             "dst_port" => self.dst_port.map(|p| p.to_string()),
             "flags" => Some(self.flags.to_string()),

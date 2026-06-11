@@ -31,8 +31,11 @@ mod tests {
                 c[..4].copy_from_slice(b"bash");
                 c
             },
-            dst_addr: 0,
+            addr_family: 0,
+            _pad: [0],
             dst_port: 0,
+            dst_addr: 0,
+            dst_addr_v6: [0; 16],
             flags: 0,
             path,
         }

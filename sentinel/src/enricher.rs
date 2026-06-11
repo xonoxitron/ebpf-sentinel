@@ -43,7 +43,15 @@ impl Enricher {
                 .unwrap_or_default()
         };
 
-        let dst_addr = if raw.dst_addr != 0 {
+        let addr_family = if raw.addr_family != 0 {
+            Some(raw.addr_family)
+        } else {
+            None
+        };
+
+        let dst_addr = if raw.addr_family == sentinel_common::AF_INET6 {
+            Some(std::net::Ipv6Addr::from(raw.dst_addr_v6).to_string())
+        } else if raw.dst_addr != 0 {
             Some(std::net::Ipv4Addr::from(raw.dst_addr.to_be()).to_string())
         } else {
             None
@@ -72,6 +80,7 @@ impl Enricher {
             comm,
             parent_comm,
             path,
+            addr_family,
             dst_addr,
             dst_port,
             flags: raw.flags,
@@ -142,4 +151,37 @@ fn cstr_comm(buf: &[u8; MAX_COMM_LEN]) -> String {
 fn cstr_path(buf: &[u8; MAX_PATH_LEN]) -> String {
     let end = buf.iter().position(|&b| b == 0).unwrap_or(MAX_PATH_LEN);
     String::from_utf8_lossy(&buf[..end]).into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sentinel_common::{SentinelEvent, AF_INET6};
+
+    #[test]
+    fn enriches_ipv6_connect() {
+        let mut enricher = Enricher::new("test-host");
+        let mut v6 = [0u8; 16];
+        v6[15] = 1; // ::1
+        let raw = SentinelEvent {
+            kind: EventKind::Connect as u32,
+            pid: 1,
+            ppid: 0,
+            uid: 0,
+            gid: 0,
+            timestamp_ns: 0,
+            comm: [0u8; MAX_COMM_LEN],
+            addr_family: AF_INET6,
+            _pad: [0],
+            dst_port: 443,
+            dst_addr: 0,
+            dst_addr_v6: v6,
+            flags: 0,
+            path: [0u8; MAX_PATH_LEN],
+        };
+        let event = enricher.enrich(raw);
+        assert_eq!(event.addr_family, Some(AF_INET6));
+        assert_eq!(event.dst_addr.as_deref(), Some("::1"));
+        assert_eq!(event.dst_port, Some(443));
+    }
 }

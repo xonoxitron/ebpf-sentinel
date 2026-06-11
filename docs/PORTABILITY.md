@@ -40,7 +40,7 @@ The userspace loader calls `ensure_btf_available()` before loading programs. If 
 |---------|----------------|
 | `kernel BTF not found` | BTF not enabled or path not mounted |
 | `attach BTF tracepoint sched_process_fork` | Kernel < 5.5 or tracing disabled |
-| Wrong connect IPs | Check sockaddr parsing; IPv6 requires roadmap IPv6 feature |
+| Wrong connect IPs | Check sockaddr parsing; IPv4 and IPv6 (`AF_INET6`) are supported |
 | Fork events missing | Confirm `sched_process_fork` in `/sys/kernel/tracing/events/sched/` |
 
 ## CO-RE limits

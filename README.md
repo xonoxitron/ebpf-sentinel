@@ -293,7 +293,7 @@ ebpf-sentinel/
 ## Roadmap
 
 - [x] CO-RE / BTF portability hardening for multi-kernel fleets
-- [ ] IPv6 connect telemetry (`sys_enter_connect` v6 parsing)
+- [x] IPv6 connect telemetry (`sys_enter_connect` v6 parsing)
 - [ ] Alert suppression and per-rule rate limiting
 - [ ] Prometheus metrics (`sentinel_events_total`, `sentinel_alerts_total`)
 - [ ] Kubernetes pod metadata enrichment (CRI / container ID)
